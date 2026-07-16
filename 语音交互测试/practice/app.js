@@ -768,9 +768,11 @@
     if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
     if (currentMode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
 
+    // 语音定位是一次独占选择：清除旧标记，只保留当前目标小节。
+    marks = { [measure.id]: activeColor };
+    refreshSelectionState();
+
     if (currentMode === "full") {
-      marks[measure.id] = activeColor;
-      refreshSelectionState();
       const target = layerElement.querySelector(`[data-id="${measure.id}"]`);
       requestAnimationFrame(() => {
         target?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
