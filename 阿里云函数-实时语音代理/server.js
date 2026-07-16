@@ -6,9 +6,9 @@ const WebSocket = require("ws");
 
 const PORT = Number(process.env.PORT || 9000);
 const API_KEY = String(process.env.DASHSCOPE_API_KEY || "").trim();
-const ACCESS_TOKEN = String(process.env.VOICE_ACCESS_TOKEN || "").trim();
 const REALTIME_URL = process.env.DASHSCOPE_REALTIME_URL
   || "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime";
+const MAX_CONNECTIONS = Number(process.env.MAX_CONNECTIONS || 10);
 const ALLOWED_ORIGINS = new Set(
   String(process.env.ALLOWED_ORIGINS || "https://gray5508.github.io")
     .split(",")
@@ -57,8 +57,8 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.url === "/" || request.url.startsWith("/health")) {
-    json(response, API_KEY && ACCESS_TOKEN ? 200 : 503, {
-      ready: Boolean(API_KEY && ACCESS_TOKEN),
+    json(response, API_KEY ? 200 : 503, {
+      ready: Boolean(API_KEY),
       model: "qwen3-asr-flash-realtime",
       region: "cn-beijing",
     });
@@ -83,7 +83,7 @@ server.on("upgrade", (request, socket, head) => {
     rejectUpgrade(socket, "404 Not Found", "WebSocket 路径不存在");
     return;
   }
-  if (!API_KEY || !ACCESS_TOKEN) {
+  if (!API_KEY) {
     rejectUpgrade(socket, "503 Service Unavailable", "函数环境变量尚未配置");
     return;
   }
@@ -91,8 +91,8 @@ server.on("upgrade", (request, socket, head) => {
     rejectUpgrade(socket, "403 Forbidden", "页面来源不在允许列表中");
     return;
   }
-  if (requestUrl.searchParams.get("access") !== ACCESS_TOKEN) {
-    rejectUpgrade(socket, "401 Unauthorized", "访问口令不正确");
+  if (browserServer.clients.size >= MAX_CONNECTIONS) {
+    rejectUpgrade(socket, "503 Service Unavailable", "当前语音连接数已达到上限");
     return;
   }
 
@@ -137,4 +137,3 @@ heartbeat.unref();
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Voice WebSocket proxy listening on 0.0.0.0:${PORT}`);
 });
-
