@@ -137,8 +137,8 @@
 
   function createWakeGate(options = {}) {
     const wakeWord = options.wakeWord || "麦当劳";
-    const activeMs = options.activeMs || 15000;
-    const closeMs = options.closeMs || 20000;
+    const activeMs = options.activeMs || 10000;
+    const closeMs = options.closeMs || 10000;
     const wakeLabel = document.getElementById("wakeLabel");
     const wakeCountdown = document.getElementById("wakeCountdown");
     const wakeStatus = document.getElementById("wakeStatus");
@@ -168,7 +168,7 @@
         wakeCountdown.textContent = `${seconds}s 后休眠，可再次说“${wakeWord}”`;
       } else {
         wakeLabel.textContent = `等待“${wakeWord}”`;
-        wakeCountdown.textContent = `说“${wakeWord}”后开放 15 秒`;
+        wakeCountdown.textContent = `说“${wakeWord}”后开放 ${Math.round(activeMs / 1000)} 秒`;
       }
     }
 
