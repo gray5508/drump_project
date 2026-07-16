@@ -21,6 +21,7 @@
   let phase = "idle";
   let sessionReady = false;
   let cloudAttempt = 0;
+  let phraseBoostDisabled = false;
 
   function eventId() {
     return `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -142,7 +143,7 @@
     current.interimResults = true;
     current.maxAlternatives = 3;
     let phraseBoostEnabled = false;
-    if ("phrases" in current && typeof window.SpeechRecognitionPhrase === "function") {
+    if (!phraseBoostDisabled && "phrases" in current && typeof window.SpeechRecognitionPhrase === "function") {
       try {
         current.phrases = WAKE_ALIASES.map((phrase) => new window.SpeechRecognitionPhrase(phrase, 7.0));
         phraseBoostEnabled = true;
@@ -172,7 +173,15 @@
       }
     };
     current.onerror = (event) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      if (event.error === "phrases-not-supported") {
+        phraseBoostDisabled = true;
+        transcript.textContent = "当前电脑浏览器不支持热词接口，正在切换普通唤醒…";
+        VoicePractice.setStatus("热词增强不可用，已自动切换普通 Web Speech", true, "success");
+        if (recognition === current) recognition = null;
+        current.onend = null;
+        try { current.abort(); } catch (_) { /* 已由浏览器结束。 */ }
+        scheduleWakeRestart();
+      } else if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         stopAll();
         VoicePractice.setStatus("麦克风或语音识别权限被拒绝", false, "error");
       } else if (!['aborted', 'no-speech'].includes(event.error)) {
