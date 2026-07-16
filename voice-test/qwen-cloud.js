@@ -17,7 +17,6 @@
   let recognition = null;
   let recognitionRestartTimer = null;
   let cloudWindowTimer = null;
-  let cloudStartupTimer = null;
   let listening = false;
   let phase = "idle";
   let sessionReady = false;
@@ -81,11 +80,6 @@
     }
     if (event.type === "session.updated") {
       sessionReady = true;
-      clearTimeout(cloudStartupTimer);
-      cloudStartupTimer = null;
-      gate.wake();
-      clearTimeout(cloudWindowTimer);
-      cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
       transcript.textContent = "千问已接管，请说练习指令…";
       VoicePractice.setStatus("千问实时识别已连接，本次窗口将在10秒后关闭", true, "success");
       return;
@@ -171,12 +165,12 @@
       const heardWakeWord = candidates.some((value) => WAKE_ALIASES.some((phrase) => value.includes(phrase)));
       if (heardWakeWord && listening && phase === "wake") {
         phase = "cloud";
+        gate.wake();
         stopWakeRecognition();
         transcript.textContent = "麦当劳已唤醒，正在连接千问…";
-        VoicePractice.setStatus("已唤醒，千问连接成功后开始计算10秒", true, "success");
+        VoicePractice.setStatus("已唤醒，正在切换到千问实时识别", true, "success");
         if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
-        clearTimeout(cloudStartupTimer);
-        cloudStartupTimer = setTimeout(() => resumeWakeMode("连接超时，重新等待“麦当劳”"), 12000);
+        cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
         startCloudRecognition();
       }
     };
@@ -241,23 +235,6 @@
     return true;
   }
 
-  async function startAudioWithRetry(attempt) {
-    let lastError = null;
-    for (let retry = 1; retry <= 3; retry += 1) {
-      if (attempt !== cloudAttempt || !listening || phase !== "cloud") return false;
-      try {
-        transcript.textContent = `正在接管麦克风（${retry}/3）…`;
-        return await startAudio(attempt);
-      } catch (error) {
-        lastError = error;
-        if (["NotAllowedError", "SecurityError"].includes(error?.name)) break;
-        if (retry < 3) await new Promise((resolve) => setTimeout(resolve, 300 * retry));
-      }
-    }
-    const reason = lastError?.name ? `${lastError.name}：${lastError.message || "录音启动失败"}` : "录音启动失败";
-    throw new Error(reason);
-  }
-
   async function startCloudRecognition() {
     const attempt = ++cloudAttempt;
     try {
@@ -265,7 +242,7 @@
       const health = await fetch(`${PROXY_ORIGIN}/health`, { cache: "no-store" }).then((response) => response.json());
       if (!health.ready) throw new Error(health.error || "北京语音代理尚未就绪");
       if (attempt !== cloudAttempt || !listening || phase !== "cloud") return;
-      const audioStarted = await startAudioWithRetry(attempt);
+      const audioStarted = await startAudio(attempt);
       if (!audioStarted || attempt !== cloudAttempt || !listening || phase !== "cloud") return;
       const socketUrl = new URL("/ws/realtime", PROXY_ORIGIN);
       socketUrl.protocol = "wss:";
@@ -322,8 +299,6 @@
   function resumeWakeMode(message) {
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
-    clearTimeout(cloudStartupTimer);
-    cloudStartupTimer = null;
     closeCloudResources();
     gate.reset();
     if (!listening) return;
@@ -351,8 +326,6 @@
     phase = "idle";
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
-    clearTimeout(cloudStartupTimer);
-    cloudStartupTimer = null;
     stopWakeRecognition();
     closeCloudResources();
     gate.reset();

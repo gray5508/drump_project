@@ -39,7 +39,7 @@
       <div class="recognition"><span>语音整合预览</span><strong>65 小节</strong></div>
     </header>
     <nav class="modebar" aria-label="练习模式">
-      <div class="global-tools"><div class="palette global-palette"><span class="label">标记颜色</span><div class="palette-list" id="palette"></div><span class="active-name" id="colorName">专注蓝</span></div><div class="voice-tools"><button class="voice-listen" id="voiceListenButton" type="button"><span class="voice-dot"></span><span id="voiceListenLabel">开始监听</span></button><span class="voice-state" id="voiceState">等待启动</span><span class="voice-transcript" id="voiceTranscript" aria-live="polite">唤醒词：麦当劳</span></div></div>
+      <div class="global-tools"><div class="palette global-palette"><span class="label">标记颜色</span><div class="palette-list" id="palette"></div><span class="active-name" id="colorName">专注蓝</span></div><div class="voice-tools"><button class="voice-listen" id="listenButton" type="button"><span class="voice-dot"></span><span id="listenLabel">开始监听</span></button><span class="voice-state" id="voiceState">等待启动</span><span class="voice-transcript" id="transcript" aria-live="polite">唤醒词：麦当劳</span></div></div>
       <div class="mode-tabs"><button class="mode-tab active" data-mode="full">完整谱面</button><button class="mode-tab" data-mode="line">按行练习</button><button class="mode-tab" data-mode="arrange">小节编排 <em id="selectedCount">0</em></button></div>
       <span class="mode-spacer" aria-hidden="true"></span>
     </nav>
@@ -101,6 +101,7 @@
 
   <script src="measures.js"></script>
   <script src="app.js?v=20260716-voice-preview"></script>
-  <script src="voice.js?v=20260716-ten-second-handoff"></script>
+  <script src="voice-adapter.js?v=20260716-shared-core"></script>
+  <script src="../qwen-cloud.js?v=20260716-shared-core"></script>
 </body>
 </html>
