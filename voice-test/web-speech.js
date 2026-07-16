@@ -5,7 +5,7 @@
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
-  const gate = VoicePractice.createWakeGate({ wakeWord: "小鼓", activeMs: 15000, closeMs: 20000 });
+  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 15000, closeMs: 20000 });
   let recognition = null;
   let active = false;
   let restarting = false;
@@ -71,11 +71,13 @@
     active = !active;
     sync();
     if (active) {
-      transcript.textContent = "正在听，请先说“小鼓”…";
-      VoicePractice.setStatus("监听中，等待唤醒词“小鼓”", true, "success");
+      gate.reset();
+      transcript.textContent = "正在听，请先说“麦当劳”…";
+      VoicePractice.setStatus("监听中，等待唤醒词“麦当劳”", true, "success");
       try { recognition.start(); } catch (_) { /* 已经处于监听状态。 */ }
     } else {
-      recognition.stop();
+      recognition.abort();
+      gate.reset();
       VoicePractice.setStatus("监听已停止", false, "");
     }
   });
