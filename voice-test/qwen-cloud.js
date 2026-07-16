@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  const PROXY_ORIGIN = "https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run";
+  const ACCESS_TOKEN_KEY = "drump_voice_access_token";
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
@@ -13,6 +15,16 @@
   let silentGain = null;
   let active = false;
   let sessionReady = false;
+
+  function getAccessToken() {
+    const saved = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (saved) return saved;
+    const entered = window.prompt("请输入语音代理访问口令（不是千问 API Key）：", "");
+    const token = String(entered || "").trim();
+    if (!token) throw new Error("需要访问口令才能使用千问实时版");
+    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+    return token;
+  }
 
   function eventId() {
     return `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -123,15 +135,21 @@
 
   async function start() {
     try {
-      const health = await fetch("/api/health").then((response) => response.json());
-      if (!health.ready) throw new Error(health.error || "本地服务未找到 API Key");
+      const accessToken = getAccessToken();
+      const health = await fetch(`${PROXY_ORIGIN}/health`, { cache: "no-store" }).then((response) => response.json());
+      if (!health.ready) throw new Error(health.error || "北京语音代理尚未就绪");
       await startAudio();
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      socket = new WebSocket(`${protocol}//${location.host}/ws/realtime`);
+      const socketUrl = new URL("/ws/realtime", PROXY_ORIGIN);
+      socketUrl.protocol = "wss:";
+      socketUrl.searchParams.set("access", accessToken);
+      socket = new WebSocket(socketUrl.toString());
       socket.onmessage = (message) => {
         try { handleServerEvent(JSON.parse(message.data)); } catch (_) { /* 忽略非 JSON 消息。 */ }
       };
-      socket.onerror = () => VoicePractice.setStatus("千问实时连接失败", false, "error");
+      socket.onerror = () => {
+        if (!sessionReady) localStorage.removeItem(ACCESS_TOKEN_KEY);
+        VoicePractice.setStatus("千问实时连接失败，请检查访问口令后重试", false, "error");
+      };
       socket.onclose = () => {
         sessionReady = false;
         if (active) VoicePractice.setStatus("实时连接已断开，请停止后重试", false, "error");
