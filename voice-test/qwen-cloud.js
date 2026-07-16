@@ -3,6 +3,7 @@
 
   const PROXY_ORIGIN = "https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run";
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const WAKE_ALIASES = ["小鼓", "小布", "小狗"];
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
@@ -143,7 +144,7 @@
     let phraseBoostEnabled = false;
     if ("phrases" in current && typeof window.SpeechRecognitionPhrase === "function") {
       try {
-        current.phrases = [new window.SpeechRecognitionPhrase("小鼓", 7.0)];
+        current.phrases = WAKE_ALIASES.map((phrase) => new window.SpeechRecognitionPhrase(phrase, 7.0));
         phraseBoostEnabled = true;
       } catch (_) { /* 当前实现不接受上下文短语时自动退回普通识别。 */ }
     }
@@ -158,7 +159,8 @@
       const corrected = candidates[0] || "";
       if (!corrected) return;
       transcript.textContent = corrected;
-      if (candidates.some((value) => value.includes("小鼓")) && listening && phase === "wake") {
+      const heardWakeWord = candidates.some((value) => WAKE_ALIASES.some((phrase) => value.includes(phrase)));
+      if (heardWakeWord && listening && phase === "wake") {
         phase = "cloud";
         gate.wake();
         stopWakeRecognition();
