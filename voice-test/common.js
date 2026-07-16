@@ -39,7 +39,6 @@
         const label = measure.measureStart === measure.measureEnd
           ? `第 ${measure.measureStart} 小节`
           : `第 ${measure.measureStart}—${measure.measureEnd} 小节`;
-        box.innerHTML = `<span>${label}</span>`;
         box.setAttribute("aria-label", `${label}，语音跳转目标`);
       }
       layer.appendChild(box);
