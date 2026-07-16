@@ -2,6 +2,7 @@
   "use strict";
 
   const PROXY_ORIGIN = "https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run";
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
@@ -12,8 +13,13 @@
   let source = null;
   let processor = null;
   let silentGain = null;
-  let active = false;
+  let recognition = null;
+  let recognitionRestartTimer = null;
+  let cloudWindowTimer = null;
+  let listening = false;
+  let phase = "idle";
   let sessionReady = false;
+  let cloudAttempt = 0;
 
   function eventId() {
     return `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -53,7 +59,7 @@
         input_audio_transcription: {
           language: "zh",
           corpus: {
-            text: "小鼓。小节。下一行。上一行。下一页。上一页。小鼓下一行。小鼓上一行。第一个小节。第十小节。第四十六小节。"
+            text: "小节。下一行。上一行。下一页。上一页。第一个小节。第十小节。第四十六小节。"
           }
         },
         turn_detection: {
@@ -72,12 +78,12 @@
     }
     if (event.type === "session.updated") {
       sessionReady = true;
-      transcript.textContent = "实时监听中，请先说“小鼓”…";
-      VoicePractice.setStatus("千问实时流已连接，等待“小鼓”", true, "success");
+      transcript.textContent = "千问已接管，请说练习指令…";
+      VoicePractice.setStatus("千问实时识别已连接，本次窗口将在20秒后关闭", true, "success");
       return;
     }
     if (event.type === "input_audio_buffer.speech_started") {
-      transcript.textContent = "听到声音，正在实时识别…";
+      transcript.textContent = "听到指令，正在实时识别…";
       return;
     }
     if (event.type === "conversation.item.input_audio_transcription.text") {
@@ -102,17 +108,110 @@
     }
   }
 
-  async function startAudio() {
-    stream = await navigator.mediaDevices.getUserMedia({
+  function stopWakeRecognition() {
+    clearTimeout(recognitionRestartTimer);
+    recognitionRestartTimer = null;
+    const current = recognition;
+    recognition = null;
+    if (current) {
+      current.onend = null;
+      try { current.stop(); } catch (_) { /* 已停止。 */ }
+    }
+  }
+
+  function scheduleWakeRestart() {
+    clearTimeout(recognitionRestartTimer);
+    if (!listening || phase !== "wake") return;
+    recognitionRestartTimer = setTimeout(startWakeRecognition, 350);
+  }
+
+  function startWakeRecognition() {
+    if (!listening || phase !== "wake") return;
+    if (recognition) return;
+    if (!SpeechRecognition) {
+      stopAll();
+      VoicePractice.setStatus("当前浏览器不支持 Web Speech 唤醒，请换用 Chrome 或 Edge 测试", false, "error");
+      return;
+    }
+
+    const current = new SpeechRecognition();
+    recognition = current;
+    current.lang = "zh-CN";
+    current.continuous = true;
+    current.interimResults = true;
+    current.maxAlternatives = 3;
+    let phraseBoostEnabled = false;
+    if ("phrases" in current && typeof window.SpeechRecognitionPhrase === "function") {
+      try {
+        current.phrases = [new window.SpeechRecognitionPhrase("小鼓", 7.0)];
+        phraseBoostEnabled = true;
+      } catch (_) { /* 当前实现不接受上下文短语时自动退回普通识别。 */ }
+    }
+    current.onresult = (event) => {
+      const candidates = [];
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        for (let alternative = 0; alternative < event.results[index].length; alternative += 1) {
+          const value = VoicePractice.normalizeSpeechText(event.results[index][alternative]?.transcript || "");
+          if (value) candidates.push(value);
+        }
+      }
+      const corrected = candidates[0] || "";
+      if (!corrected) return;
+      transcript.textContent = corrected;
+      if (candidates.some((value) => value.includes("小鼓")) && listening && phase === "wake") {
+        phase = "cloud";
+        gate.wake();
+        stopWakeRecognition();
+        transcript.textContent = "小鼓已唤醒，正在连接千问…";
+        VoicePractice.setStatus("已唤醒，请听到连接成功提示后再说指令", true, "success");
+        if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
+        cloudWindowTimer = setTimeout(() => resumeWakeMode("20秒指令窗口已结束，重新等待“小鼓”"), 20000);
+        startCloudRecognition();
+      }
+    };
+    current.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        stopAll();
+        VoicePractice.setStatus("麦克风或语音识别权限被拒绝", false, "error");
+      } else if (!['aborted', 'no-speech'].includes(event.error)) {
+        VoicePractice.setStatus(`Web Speech 唤醒暂时不可用：${event.error}`, false, "error");
+      }
+    };
+    current.onend = () => {
+      if (recognition === current) recognition = null;
+      scheduleWakeRestart();
+    };
+    try {
+      current.start();
+      transcript.textContent = "浏览器正在等待“小鼓”…";
+      VoicePractice.setStatus(
+        phraseBoostEnabled
+          ? "Web Speech 正在等待“小鼓”（已启用热词增强），尚未连接千问"
+          : "Web Speech 正在等待“小鼓”（当前浏览器无热词接口），尚未连接千问",
+        true,
+        "success"
+      );
+    } catch (_) {
+      scheduleWakeRestart();
+    }
+  }
+
+  async function startAudio(attempt) {
+    const currentStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
+    if (attempt !== cloudAttempt || !listening || phase !== "cloud") {
+      currentStream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+    stream = currentStream;
     audioContext = new AudioContext();
     source = audioContext.createMediaStreamSource(stream);
     processor = audioContext.createScriptProcessor(4096, 1, 1);
     silentGain = audioContext.createGain();
     silentGain.gain.value = 0;
     processor.onaudioprocess = (event) => {
-      if (!active || !sessionReady || !socket || socket.readyState !== WebSocket.OPEN) return;
+      if (!listening || phase !== "cloud" || !sessionReady || !socket || socket.readyState !== WebSocket.OPEN) return;
       const floatSamples = event.inputBuffer.getChannelData(0);
       const pcm = resampleToPcm16(floatSamples, audioContext.sampleRate);
       socket.send(JSON.stringify({ event_id: eventId(), type: "input_audio_buffer.append", audio: bytesToBase64(pcm) }));
@@ -120,44 +219,49 @@
     source.connect(processor);
     processor.connect(silentGain);
     silentGain.connect(audioContext.destination);
+    return true;
   }
 
-  async function start() {
+  async function startCloudRecognition() {
+    const attempt = ++cloudAttempt;
     try {
+      await new Promise((resolve) => setTimeout(resolve, 220));
       const health = await fetch(`${PROXY_ORIGIN}/health`, { cache: "no-store" }).then((response) => response.json());
       if (!health.ready) throw new Error(health.error || "北京语音代理尚未就绪");
-      await startAudio();
+      if (attempt !== cloudAttempt || !listening || phase !== "cloud") return;
+      const audioStarted = await startAudio(attempt);
+      if (!audioStarted || attempt !== cloudAttempt || !listening || phase !== "cloud") return;
       const socketUrl = new URL("/ws/realtime", PROXY_ORIGIN);
       socketUrl.protocol = "wss:";
-      socket = new WebSocket(socketUrl.toString());
-      socket.onmessage = (message) => {
+      const currentSocket = new WebSocket(socketUrl.toString());
+      socket = currentSocket;
+      currentSocket.onmessage = (message) => {
         try { handleServerEvent(JSON.parse(message.data)); } catch (_) { /* 忽略非 JSON 消息。 */ }
       };
-      socket.onerror = () => {
-        VoicePractice.setStatus("千问实时连接失败，请稍后重试", false, "error");
+      currentSocket.onerror = () => {
+        VoicePractice.setStatus("千问实时连接失败，将返回唤醒待机", false, "error");
       };
-      socket.onclose = () => {
+      currentSocket.onclose = () => {
         sessionReady = false;
-        if (active) VoicePractice.setStatus("实时连接已断开，请停止后重试", false, "error");
+        if (socket === currentSocket) socket = null;
+        if (listening && phase === "cloud") resumeWakeMode("千问连接已结束，重新等待“小鼓”");
       };
-      active = true;
-      sync();
-      transcript.textContent = "正在连接千问实时模型…";
-      VoicePractice.setStatus("正在建立实时语音流", true, "success");
     } catch (error) {
-      stop();
-      VoicePractice.setStatus(error.message || "无法启动实时识别", false, "error");
+      if (attempt !== cloudAttempt) return;
+      VoicePractice.setStatus(error.message || "无法启动千问实时识别", false, "error");
+      if (listening) resumeWakeMode("连接失败，已返回“小鼓”唤醒待机");
     }
   }
 
-  function stop() {
-    active = false;
+  function closeCloudResources() {
+    cloudAttempt += 1;
     sessionReady = false;
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ event_id: eventId(), type: "session.finish" }));
-      setTimeout(() => socket?.close(), 180);
-    } else if (socket) socket.close();
+    const currentSocket = socket;
     socket = null;
+    if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+      currentSocket.send(JSON.stringify({ event_id: eventId(), type: "session.finish" }));
+      setTimeout(() => currentSocket.close(), 180);
+    } else if (currentSocket) currentSocket.close();
     if (processor) processor.disconnect();
     if (source) source.disconnect();
     if (silentGain) silentGain.disconnect();
@@ -168,18 +272,52 @@
     processor = null;
     source = null;
     silentGain = null;
+  }
+
+  function resumeWakeMode(message) {
+    clearTimeout(cloudWindowTimer);
+    cloudWindowTimer = null;
+    closeCloudResources();
+    if (!listening) return;
+    phase = "wake";
+    sync();
+    transcript.textContent = "浏览器正在等待“小鼓”…";
+    VoicePractice.setStatus(message, true, "success");
+    scheduleWakeRestart();
+  }
+
+  function start() {
+    if (!SpeechRecognition) {
+      VoicePractice.setStatus("当前浏览器不支持 Web Speech 唤醒，请换用 Chrome 或 Edge 测试", false, "error");
+      return;
+    }
+    listening = true;
+    phase = "wake";
+    sync();
+    startWakeRecognition();
+  }
+
+  function stopAll() {
+    listening = false;
+    phase = "idle";
+    clearTimeout(cloudWindowTimer);
+    cloudWindowTimer = null;
+    stopWakeRecognition();
+    closeCloudResources();
+    transcript.textContent = "等待开始…";
     sync();
   }
 
   function sync() {
-    button.classList.toggle("listening", active);
-    label.textContent = active ? "停止监听" : "开始监听";
+    button.classList.toggle("listening", listening);
+    label.textContent = listening ? "停止监听" : "开始监听";
   }
 
   button.addEventListener("click", () => {
-    if (active) {
-      stop();
+    if (listening) {
+      stopAll();
       VoicePractice.setStatus("监听已停止", false, "");
     } else start();
   });
+  window.addEventListener("pagehide", stopAll, { once: true });
 })();
