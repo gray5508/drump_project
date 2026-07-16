@@ -4,8 +4,9 @@
   const PROXY_ORIGIN = "https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run";
   const WAKE_WORD = "麦当劳";
   const WAKE_ALIASES = ["麦当劳"];
-  const ACTIVE_MS = 15000;
-  const CLOSE_MS = 20000;
+  const ACTIVE_MS = 10000;
+  const CLOSE_MS = 10000;
+  const STARTUP_TIMEOUT_MS = 12000;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   const practice = window.DrumPracticeVoice;
@@ -19,6 +20,7 @@
   let recognition = null;
   let recognitionRestartTimer = null;
   let cloudWindowTimer = null;
+  let cloudStartupTimer = null;
   let commandActiveUntil = 0;
   let phraseBoostDisabled = false;
   let cloudEpoch = 0;
@@ -163,7 +165,13 @@
     }
     if (event.type === "session.updated") {
       sessionReady = true;
-      setVoiceState("千问已连接，请说指令", "15 秒指令窗口已开始");
+      clearTimeout(cloudStartupTimer);
+      cloudStartupTimer = null;
+      resetCommandState();
+      commandActiveUntil = Date.now() + ACTIVE_MS;
+      clearTimeout(cloudWindowTimer);
+      cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒结束并已清空，重新等待麦当劳"), CLOSE_MS);
+      setVoiceState("千问已连接，请说指令", "10 秒指令窗口已开始");
       return;
     }
     if (event.type === "input_audio_buffer.speech_started") {
@@ -237,11 +245,11 @@
       if (!woke || !listening || phase !== "wake") return;
       phase = "cloud";
       resetCommandState();
-      commandActiveUntil = Date.now() + ACTIVE_MS;
       stopWakeRecognition();
       setVoiceState("已唤醒，正在连接千问", `${WAKE_WORD}已识别`);
       if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
-      cloudWindowTimer = setTimeout(() => resumeWakeMode("本轮已清空，重新等待麦当劳"), CLOSE_MS);
+      clearTimeout(cloudStartupTimer);
+      cloudStartupTimer = setTimeout(() => resumeWakeMode("连接超时并已清空，重新等待麦当劳", "千问未能在12秒内启动"), STARTUP_TIMEOUT_MS);
       startCloudRecognition();
     };
     current.onerror = (event) => {
@@ -302,6 +310,23 @@
     return true;
   }
 
+  async function startAudioWithRetry(epoch) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (epoch !== cloudEpoch || !listening || phase !== "cloud") return false;
+      try {
+        setVoiceState("正在切换麦克风", `录音接管 ${attempt}/3`);
+        return await startAudio(epoch);
+      } catch (error) {
+        lastError = error;
+        if (["NotAllowedError", "SecurityError"].includes(error?.name)) break;
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+    const reason = lastError?.name ? `${lastError.name}：${lastError.message || "录音启动失败"}` : "录音启动失败";
+    throw new Error(reason);
+  }
+
   async function startCloudRecognition() {
     const epoch = ++cloudEpoch;
     try {
@@ -309,7 +334,7 @@
       const health = await fetch(`${PROXY_ORIGIN}/health`, { cache: "no-store" }).then((response) => response.json());
       if (!health.ready) throw new Error(health.error || "北京语音代理尚未就绪");
       if (epoch !== cloudEpoch || !listening || phase !== "cloud") return;
-      if (!await startAudio(epoch)) return;
+      if (!await startAudioWithRetry(epoch)) return;
       if (epoch !== cloudEpoch || !listening || phase !== "cloud") return;
 
       const socketUrl = new URL("/ws/realtime", PROXY_ORIGIN);
@@ -323,16 +348,17 @@
       currentSocket.onerror = () => {
         if (epoch === cloudEpoch) setVoiceState("千问连接失败，将返回唤醒待机");
       };
-      currentSocket.onclose = () => {
+      currentSocket.onclose = (event) => {
         if (epoch !== cloudEpoch || socket !== currentSocket) return;
         socket = null;
         sessionReady = false;
-        if (listening && phase === "cloud") resumeWakeMode("连接已结束并清空，重新等待麦当劳");
+        if (listening && phase === "cloud") {
+          resumeWakeMode("连接提前结束并已清空，重新等待麦当劳", `WebSocket 关闭代码：${event.code}`);
+        }
       };
     } catch (error) {
       if (epoch !== cloudEpoch) return;
-      setVoiceState(error.message || "无法启动千问实时识别");
-      if (listening) resumeWakeMode("连接失败并已清空，重新等待麦当劳");
+      if (listening) resumeWakeMode("启动失败并已清空，重新等待麦当劳", error.message || "无法启动千问实时识别");
     }
   }
 
@@ -368,13 +394,15 @@
     silentGain = null;
   }
 
-  function resumeWakeMode(message) {
+  function resumeWakeMode(message, detail = "上一轮指令已清空") {
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
+    clearTimeout(cloudStartupTimer);
+    cloudStartupTimer = null;
     closeCloudResources();
     if (!listening) return;
     phase = "wake";
-    setVoiceState(message, "上一轮指令已清空");
+    setVoiceState(message, detail);
     scheduleWakeRestart();
   }
 
@@ -395,6 +423,8 @@
     phase = "idle";
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
+    clearTimeout(cloudStartupTimer);
+    cloudStartupTimer = null;
     stopWakeRecognition();
     closeCloudResources();
     syncButton();

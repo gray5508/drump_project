@@ -5,7 +5,7 @@
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
-  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 15000, closeMs: 20000 });
+  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, closeMs: 10000 });
   let recognition = null;
   let active = false;
   let restarting = false;
