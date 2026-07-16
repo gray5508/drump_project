@@ -82,7 +82,7 @@
     return String(value || "")
       .replace(/\s+/g, "")
       .replace(/[，。！？、,.!?]/g, "")
-      .replace(/小[谷古骨]/g, "小鼓");
+      .replace(/买当劳|麦当牢|买当牢/g, "麦当劳");
   }
 
   function chineseNumber(raw) {
@@ -137,7 +137,7 @@
   }
 
   function createWakeGate(options = {}) {
-    const wakeWord = options.wakeWord || "小鼓";
+    const wakeWord = options.wakeWord || "麦当劳";
     const activeMs = options.activeMs || 15000;
     const closeMs = options.closeMs || 20000;
     const wakeLabel = document.getElementById("wakeLabel");
@@ -166,7 +166,7 @@
       } else if (current === "grace") {
         const seconds = Math.max(1, Math.ceil((closeAt - now) / 1000));
         wakeLabel.textContent = "唤醒已过期";
-        wakeCountdown.textContent = `${seconds}s 后休眠，可再次说“小鼓”`;
+        wakeCountdown.textContent = `${seconds}s 后休眠，可再次说“${wakeWord}”`;
       } else {
         wakeLabel.textContent = `等待“${wakeWord}”`;
         wakeCountdown.textContent = `说“${wakeWord}”后开放 15 秒`;
@@ -178,6 +178,7 @@
       activeUntil = now + activeMs;
       closeAt = now + closeMs;
       lastSignature = "";
+      lastCommandAt = 0;
       setStatus(`“${wakeWord}”已唤醒，请说指令`, true, "success");
       updateUi();
       if (navigator.vibrate) navigator.vibrate(35);
@@ -212,10 +213,18 @@
       return { text, handled: true, command };
     }
 
+    function reset() {
+      activeUntil = 0;
+      closeAt = 0;
+      lastSignature = "";
+      lastCommandAt = 0;
+      updateUi();
+    }
+
     const ticker = setInterval(updateUi, 250);
     window.addEventListener("pagehide", () => clearInterval(ticker), { once: true });
     updateUi();
-    return { process, wake, state, updateUi };
+    return { process, wake, reset, state, updateUi };
   }
 
   systems.forEach((_, index) => {

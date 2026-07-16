@@ -3,11 +3,11 @@
 
   const PROXY_ORIGIN = "https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run";
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const WAKE_ALIASES = ["小鼓", "小布", "小狗"];
+  const WAKE_ALIASES = ["麦当劳"];
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
-  const gate = VoicePractice.createWakeGate({ wakeWord: "小鼓", activeMs: 15000, closeMs: 20000 });
+  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 15000, closeMs: 20000 });
   let socket = null;
   let stream = null;
   let audioContext = null;
@@ -117,7 +117,9 @@
     recognition = null;
     if (current) {
       current.onend = null;
-      try { current.stop(); } catch (_) { /* 已停止。 */ }
+      current.onresult = null;
+      current.onerror = null;
+      try { current.abort(); } catch (_) { /* 已停止。 */ }
     }
   }
 
@@ -165,10 +167,10 @@
         phase = "cloud";
         gate.wake();
         stopWakeRecognition();
-        transcript.textContent = "小鼓已唤醒，正在连接千问…";
+        transcript.textContent = "麦当劳已唤醒，正在连接千问…";
         VoicePractice.setStatus("已唤醒，请听到连接成功提示后再说指令", true, "success");
         if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
-        cloudWindowTimer = setTimeout(() => resumeWakeMode("20秒指令窗口已结束，重新等待“小鼓”"), 20000);
+        cloudWindowTimer = setTimeout(() => resumeWakeMode("20秒指令窗口已结束，重新等待“麦当劳”"), 20000);
         startCloudRecognition();
       }
     };
@@ -194,11 +196,11 @@
     };
     try {
       current.start();
-      transcript.textContent = "浏览器正在等待“小鼓”…";
+      transcript.textContent = "浏览器正在等待“麦当劳”…";
       VoicePractice.setStatus(
         phraseBoostEnabled
-          ? "Web Speech 正在等待“小鼓”（已启用热词增强），尚未连接千问"
-          : "Web Speech 正在等待“小鼓”（当前浏览器无热词接口），尚未连接千问",
+          ? "Web Speech 正在等待“麦当劳”（已启用热词增强），尚未连接千问"
+          : "Web Speech 正在等待“麦当劳”（当前浏览器无热词接口），尚未连接千问",
         true,
         "success"
       );
@@ -255,12 +257,12 @@
       currentSocket.onclose = () => {
         sessionReady = false;
         if (socket === currentSocket) socket = null;
-        if (listening && phase === "cloud") resumeWakeMode("千问连接已结束，重新等待“小鼓”");
+        if (listening && phase === "cloud") resumeWakeMode("千问连接已结束，重新等待“麦当劳”");
       };
     } catch (error) {
       if (attempt !== cloudAttempt) return;
       VoicePractice.setStatus(error.message || "无法启动千问实时识别", false, "error");
-      if (listening) resumeWakeMode("连接失败，已返回“小鼓”唤醒待机");
+      if (listening) resumeWakeMode("连接失败，已返回“麦当劳”唤醒待机");
     }
   }
 
@@ -273,7 +275,10 @@
       currentSocket.send(JSON.stringify({ event_id: eventId(), type: "session.finish" }));
       setTimeout(() => currentSocket.close(), 180);
     } else if (currentSocket) currentSocket.close();
-    if (processor) processor.disconnect();
+    if (processor) {
+      processor.onaudioprocess = null;
+      processor.disconnect();
+    }
     if (source) source.disconnect();
     if (silentGain) silentGain.disconnect();
     if (stream) stream.getTracks().forEach((track) => track.stop());
@@ -289,10 +294,11 @@
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
     closeCloudResources();
+    gate.reset();
     if (!listening) return;
     phase = "wake";
     sync();
-    transcript.textContent = "浏览器正在等待“小鼓”…";
+    transcript.textContent = "浏览器正在等待“麦当劳”…";
     VoicePractice.setStatus(message, true, "success");
     scheduleWakeRestart();
   }
@@ -304,6 +310,7 @@
     }
     listening = true;
     phase = "wake";
+    gate.reset();
     sync();
     startWakeRecognition();
   }
@@ -315,6 +322,7 @@
     cloudWindowTimer = null;
     stopWakeRecognition();
     closeCloudResources();
+    gate.reset();
     transcript.textContent = "等待开始…";
     sync();
   }
