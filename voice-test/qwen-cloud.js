@@ -17,6 +17,7 @@
   let recognition = null;
   let recognitionRestartTimer = null;
   let cloudWindowTimer = null;
+  let cloudConnectTimer = null;
   let listening = false;
   let phase = "idle";
   let sessionReady = false;
@@ -80,6 +81,10 @@
     }
     if (event.type === "session.updated") {
       sessionReady = true;
+      clearTimeout(cloudConnectTimer);
+      cloudConnectTimer = null;
+      clearTimeout(cloudWindowTimer);
+      cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
       transcript.textContent = "千问已接管，请说练习指令…";
       VoicePractice.setStatus("千问实时识别已连接，本次窗口将在10秒后关闭", true, "success");
       return;
@@ -170,7 +175,8 @@
         transcript.textContent = "麦当劳已唤醒，正在连接千问…";
         VoicePractice.setStatus("已唤醒，正在切换到千问实时识别", true, "success");
         if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
-        cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
+        clearTimeout(cloudConnectTimer);
+        cloudConnectTimer = setTimeout(() => resumeWakeMode("千问连接超时，已返回“麦当劳”唤醒待机"), 15000);
         startCloudRecognition();
       }
     };
@@ -299,6 +305,8 @@
   function resumeWakeMode(message) {
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
+    clearTimeout(cloudConnectTimer);
+    cloudConnectTimer = null;
     closeCloudResources();
     gate.reset();
     if (!listening) return;
@@ -326,6 +334,8 @@
     phase = "idle";
     clearTimeout(cloudWindowTimer);
     cloudWindowTimer = null;
+    clearTimeout(cloudConnectTimer);
+    cloudConnectTimer = null;
     stopWakeRecognition();
     closeCloudResources();
     gate.reset();
