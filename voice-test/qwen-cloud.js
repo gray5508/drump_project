@@ -249,6 +249,7 @@
       const currentSocket = new WebSocket(socketUrl.toString());
       socket = currentSocket;
       currentSocket.onmessage = (message) => {
+        if (attempt !== cloudAttempt || socket !== currentSocket || phase !== "cloud") return;
         try { handleServerEvent(JSON.parse(message.data)); } catch (_) { /* 忽略非 JSON 消息。 */ }
       };
       currentSocket.onerror = () => {
@@ -271,6 +272,11 @@
     sessionReady = false;
     const currentSocket = socket;
     socket = null;
+    if (currentSocket) {
+      currentSocket.onmessage = null;
+      currentSocket.onerror = null;
+      currentSocket.onclose = null;
+    }
     if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
       currentSocket.send(JSON.stringify({ event_id: eventId(), type: "session.finish" }));
       setTimeout(() => currentSocket.close(), 180);
