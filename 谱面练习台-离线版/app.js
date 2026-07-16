@@ -2,10 +2,10 @@
   "use strict";
 
   const palettes = [
-    { id: "blue", name: "专注蓝", fill: "rgba(73,111,236,.18)", border: "#496fec" },
-    { id: "yellow", name: "练习黄", fill: "rgba(244,183,64,.24)", border: "#e2a328" },
-    { id: "coral", name: "难点红", fill: "rgba(235,100,91,.2)", border: "#df5e55" },
-    { id: "green", name: "完成绿", fill: "rgba(62,166,124,.2)", border: "#32966c" }
+    { id: "blue", name: "专注蓝", fill: "rgba(73,111,236,.18)", preview: "rgba(73,111,236,.08)", hover: "rgba(73,111,236,.14)", border: "#496fec" },
+    { id: "yellow", name: "练习黄", fill: "rgba(244,183,64,.24)", preview: "rgba(244,183,64,.09)", hover: "rgba(244,183,64,.16)", border: "#e2a328" },
+    { id: "coral", name: "难点红", fill: "rgba(235,100,91,.2)", preview: "rgba(235,100,91,.08)", hover: "rgba(235,100,91,.14)", border: "#df5e55" },
+    { id: "green", name: "完成绿", fill: "rgba(62,166,124,.2)", preview: "rgba(62,166,124,.08)", hover: "rgba(62,166,124,.14)", border: "#32966c" }
   ];
   const measureMap = new Map(SCORE_DATA.measures.map((measure) => [measure.id, measure]));
   const systemMeasures = Array.from({ length: SCORE_DATA.systems }, (_, index) =>
@@ -70,11 +70,26 @@
     return palettes.find((palette) => palette.id === id);
   }
 
+  function applyActivePreview() {
+    const palette = paletteFor(activeColor) || palettes[0];
+    document.documentElement.style.setProperty("--active-preview-fill", palette.preview);
+    document.documentElement.style.setProperty("--active-preview-border", palette.border);
+  }
+
   function setMarkedStyle(element, id) {
     const palette = paletteFor(marks[id]);
     element.classList.toggle("marked", Boolean(palette));
     element.style.backgroundColor = palette ? palette.fill : "";
     element.style.borderColor = palette ? palette.border : "";
+    element.style.setProperty("--mark-hover-fill", palette ? palette.hover : "transparent");
+    element.style.setProperty("--mark-border", palette ? palette.border : "transparent");
+    const label = element.querySelector("span");
+    const measure = measureMap.get(id);
+    if (label && measure) {
+      const action = palette ? (marks[id] === activeColor ? "点击取消" : "点击改色") : "点击标记";
+      label.textContent = `${measure.label} · ${action}`;
+      element.setAttribute("aria-label", `第 ${measure.measureStart} 小节，${action}`);
+    }
   }
 
   function refreshSelectionState() {
@@ -125,6 +140,7 @@
   }
 
   function buildPalette() {
+    applyActivePreview();
     palettes.forEach((palette) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -134,9 +150,11 @@
       button.setAttribute("aria-label", palette.name);
       button.addEventListener("click", () => {
         activeColor = palette.id;
+        applyActivePreview();
         document.getElementById("colorName").textContent = palette.name;
         document.querySelectorAll(".chip").forEach((chip) => chip.classList.remove("active"));
         button.classList.add("active");
+        refreshSelectionState();
       });
       paletteElement.appendChild(button);
     });
@@ -191,6 +209,7 @@
     measures.forEach((measure) => {
       const button = createMeasureButton(measure, "line-measure");
       button.innerHTML = `<span>${measure.label}</span>`;
+      setMarkedStyle(button, measure.id);
       overlay.appendChild(button);
     });
     linePaperElement.appendChild(overlay);
