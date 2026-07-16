@@ -1,0 +1,16 @@
+{
+  "name": "drump-qwen-realtime-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Qwen realtime ASR WebSocket proxy for Alibaba Cloud Function Compute",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "8.21.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
