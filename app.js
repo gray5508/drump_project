@@ -17,9 +17,27 @@
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
+  const VIDEO_LIBRARY = {
+    40: [
+      { label: "片段 1", src: "video/measure-40-1.mp4", poster: "video/posters/measure-40-1.jpg" },
+      { label: "片段 2", src: "video/measure-40-2.mp4", poster: "video/posters/measure-40-2.jpg" }
+    ],
+    41: [
+      { label: "片段 1", src: "video/measure-41-1.mp4", poster: "video/posters/measure-41-1.jpg" },
+      { label: "片段 2", src: "video/measure-41-2.mp4", poster: "video/posters/measure-41-2.jpg" }
+    ],
+    46: [
+      { label: "教学演示", src: "video/measure-46.mp4", poster: "video/posters/measure-46.jpg" }
+    ],
+    48: [
+      { label: "片段 1", src: "video/measure-48-1.mp4", poster: "video/posters/measure-48-1.jpg" },
+      { label: "片段 2", src: "video/measure-48-2.mp4", poster: "video/posters/measure-48-2.jpg" }
+    ]
+  };
   let activeColor = "blue";
   let zoom = 100;
   let lineIndex = 0;
+  let currentMode = "full";
   let marks = readStorage(MARKS_KEY, {});
   let groups = readStorage(GROUPS_KEY, []);
   let draftRows = null;
@@ -48,6 +66,13 @@
   const templateFrame = document.getElementById("templateFrame");
   const templateHandles = document.querySelectorAll(".template-handle");
   const templateSizeValue = document.getElementById("templateSizeValue");
+  const videoDialog = document.getElementById("videoDialog");
+  const tutorialVideo = document.getElementById("tutorialVideo");
+  const videoTitle = document.getElementById("videoTitle");
+  const videoClips = document.getElementById("videoClips");
+  const videoToast = document.getElementById("videoToast");
+  let activeTutorialClips = [];
+  let videoToastTimer = null;
 
   function readStorage(key, fallback) {
     try {
@@ -112,6 +137,106 @@
     refreshSelectionState();
   }
 
+  function tutorialClipsFor(id) {
+    const measure = measureMap.get(id);
+    return measure ? (VIDEO_LIBRARY[measure.measureStart] || []) : [];
+  }
+
+  function showVideoToast(message) {
+    clearTimeout(videoToastTimer);
+    videoToast.textContent = message;
+    videoToast.classList.add("show");
+    videoToastTimer = setTimeout(() => videoToast.classList.remove("show"), 1500);
+  }
+
+  function playTutorialClip(index) {
+    const clip = activeTutorialClips[index];
+    if (!clip) return;
+    tutorialVideo.pause();
+    tutorialVideo.src = clip.src;
+    tutorialVideo.poster = clip.poster;
+    tutorialVideo.load();
+    videoClips.querySelectorAll("button").forEach((button, buttonIndex) =>
+      button.classList.toggle("active", buttonIndex === index)
+    );
+    const playRequest = tutorialVideo.play();
+    if (playRequest) playRequest.catch(() => { /* Controls remain available when autoplay is blocked. */ });
+  }
+
+  function openTutorial(id) {
+    const measure = measureMap.get(id);
+    activeTutorialClips = tutorialClipsFor(id);
+    if (!measure || !activeTutorialClips.length) {
+      showVideoToast(measure ? `第 ${measure.label} 小节还没有教学视频` : "这个小节还没有教学视频");
+      return;
+    }
+    videoTitle.textContent = `第 ${measure.label} 小节 · 教学视频`;
+    videoClips.innerHTML = "";
+    activeTutorialClips.forEach((clip, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = clip.label;
+      button.addEventListener("click", () => playTutorialClip(index));
+      videoClips.appendChild(button);
+    });
+    if (!videoDialog.open) videoDialog.showModal();
+    playTutorialClip(0);
+  }
+
+  function closeTutorial() {
+    tutorialVideo.pause();
+    tutorialVideo.removeAttribute("src");
+    tutorialVideo.removeAttribute("poster");
+    tutorialVideo.load();
+    activeTutorialClips = [];
+    if (videoDialog.open) videoDialog.close();
+  }
+
+  function attachTutorialLongPress(element, id) {
+    const clips = tutorialClipsFor(id);
+    if (clips.length) {
+      element.classList.add("has-tutorial");
+      element.title = `${element.title ? `${element.title} · ` : ""}长按查看教学视频`;
+    }
+    let holdTimer = null;
+    let suppressClickUntil = 0;
+    let startX = 0;
+    let startY = 0;
+    const practiceCard = element.closest(".practice-card");
+    const cancelHold = () => {
+      if (holdTimer) clearTimeout(holdTimer);
+      holdTimer = null;
+      element.classList.remove("holding-video");
+      if (practiceCard) practiceCard.draggable = true;
+    };
+    element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.target.closest(".frame-resizer,.card-resize-handle,.card-tools")) return;
+      startX = event.clientX;
+      startY = event.clientY;
+      if (practiceCard) practiceCard.draggable = false;
+      element.classList.add("holding-video");
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        suppressClickUntil = Date.now() + 1000;
+        element.classList.remove("holding-video");
+        if (practiceCard) practiceCard.draggable = true;
+        openTutorial(id);
+      }, 650);
+    });
+    element.addEventListener("pointermove", (event) => {
+      if (holdTimer && Math.hypot(event.clientX - startX, event.clientY - startY) > 8) cancelHold();
+    });
+    element.addEventListener("pointerup", cancelHold);
+    element.addEventListener("pointercancel", cancelHold);
+    element.addEventListener("pointerleave", cancelHold);
+    element.addEventListener("contextmenu", (event) => event.preventDefault());
+    element.addEventListener("click", (event) => {
+      if (Date.now() >= suppressClickUntil) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
+
   function createMeasureButton(measure, className) {
     const button = document.createElement("button");
     button.type = "button";
@@ -126,6 +251,7 @@
     button.setAttribute("aria-label", `${range}，单击标记`);
     button.innerHTML = `<span class="measure-label">${measure.label}</span>`;
     button.addEventListener("click", () => toggleMark(measure.id));
+    attachTutorialLongPress(button, measure.id);
     setMarkedStyle(button, measure.id);
     return button;
   }
@@ -328,15 +454,6 @@
     return value && typeof value === "object" ? value : {};
   }
 
-  function resizeDraftItem(id, axis, delta) {
-    const current = customSizeFor(id);
-    const base = axis === "width" ? (current.width || templateWidth) : (current.height || templateHeight);
-    const minimum = axis === "width" ? 120 : 70;
-    const maximum = axis === "width" ? 520 : 320;
-    draftSizes[id] = { ...current, [axis]: Math.max(minimum, Math.min(maximum, base + delta)) };
-    markDraftChanged();
-  }
-
   function resetDraftItemSize(id) {
     delete draftSizes[id];
     markDraftChanged();
@@ -385,13 +502,8 @@
     addMeasureCanvas(crop, measure);
     const resizer = document.createElement("div");
     resizer.className = "frame-resizer";
-    resizer.innerHTML = '<button type="button" title="缩小这个框的宽度">W−</button><button type="button" title="缩小这个框的高度">H−</button><button type="button" title="恢复模板大小">↺</button><button type="button" title="增大这个框的高度">H＋</button><button type="button" title="增大这个框的宽度">W＋</button>';
-    const resizeButtons = resizer.querySelectorAll("button");
-    resizeButtons[0].addEventListener("click", () => resizeDraftItem(id, "width", -20));
-    resizeButtons[1].addEventListener("click", () => resizeDraftItem(id, "height", -20));
-    resizeButtons[2].addEventListener("click", () => resetDraftItemSize(id));
-    resizeButtons[3].addEventListener("click", () => resizeDraftItem(id, "height", 20));
-    resizeButtons[4].addEventListener("click", () => resizeDraftItem(id, "width", 20));
+    resizer.innerHTML = '<button type="button" title="恢复当前模板大小" aria-label="恢复当前模板大小">↺</button>';
+    resizer.querySelector("button").addEventListener("click", () => resetDraftItemSize(id));
     resizer.addEventListener("mousedown", (event) => event.stopPropagation());
     crop.appendChild(resizer);
     const palette = paletteFor(marks[id]);
@@ -474,6 +586,7 @@
       handle.addEventListener("pointercancel", finishResize);
     });
     card.append(head, crop, leftZone, rightZone, ...cardResizeHandles);
+    attachTutorialLongPress(crop, id);
     card.addEventListener("dragstart", () => {
       draggedId = id;
       card.classList.add("dragging");
@@ -658,12 +771,67 @@
     if (rowsElement) rowsElement.style.width = `${calculatedRowsWidth()}px`;
   }
 
+  function flashVoiceTarget(element) {
+    if (!element) return;
+    element.classList.remove("voice-target");
+    void element.offsetWidth;
+    element.classList.add("voice-target");
+    setTimeout(() => element.classList.remove("voice-target"), 2300);
+  }
+
+  function voiceGoToMeasure(number) {
+    const measure = SCORE_DATA.measures.find((item) => number >= item.measureStart && number <= item.measureEnd);
+    if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
+    if (currentMode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
+
+    // 语音定位是一次独占选择：清除旧标记，只保留当前目标小节。
+    marks = { [measure.id]: activeColor };
+    refreshSelectionState();
+
+    if (currentMode === "full") {
+      const target = layerElement.querySelector(`[data-id="${measure.id}"]`);
+      requestAnimationFrame(() => {
+        target?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        flashVoiceTarget(target);
+      });
+      return { ok: true, message: `已用当前颜色标记第 ${number} 小节` };
+    }
+
+    lineIndex = measure.system - 1;
+    renderLine();
+    requestAnimationFrame(() => {
+      const target = linePaperElement.querySelector(`[data-id="${measure.id}"]`);
+      flashVoiceTarget(target);
+    });
+    return { ok: true, message: `已跳转并标记第 ${number} 小节` };
+  }
+
+  function voiceMoveLine(direction) {
+    if (currentMode !== "line") return { ok: false, message: "默认谱面只支持“第 xx 小节”" };
+    const next = lineIndex + direction;
+    if (next < 0 || next >= SCORE_DATA.systems) {
+      return { ok: false, message: direction > 0 ? "已经是最后一行" : "已经是第一行" };
+    }
+    lineIndex = next;
+    renderLine();
+    return { ok: true, message: direction > 0 ? "已执行：下一行" : "已执行：上一行" };
+  }
+
   function setMode(mode) {
+    currentMode = mode;
     document.querySelectorAll(".mode-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.mode === mode));
     document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${mode}`));
     if (mode === "line") renderLine();
     if (mode === "arrange") ensureDraft();
+    window.dispatchEvent(new CustomEvent("practice-modechange", { detail: { mode } }));
   }
+
+  window.DrumPracticeVoice = {
+    getMode: () => currentMode,
+    goToMeasure: voiceGoToMeasure,
+    nextLine: () => voiceMoveLine(1),
+    prevLine: () => voiceMoveLine(-1)
+  };
 
   document.querySelectorAll(".mode-tab").forEach((tab) => tab.addEventListener("click", () => setMode(tab.dataset.mode)));
   document.getElementById("minus").addEventListener("click", () => {
@@ -740,9 +908,12 @@
     const id = pendingLoadGroupId; unsavedDialog.close(); if (id) doLoadGroup(id);
   });
   document.getElementById("saveThenLoad").addEventListener("click", () => { unsavedDialog.close(); openSaveDialog(); });
+  document.getElementById("closeVideo").addEventListener("click", closeTutorial);
+  videoDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeTutorial(); });
+  videoDialog.addEventListener("click", (event) => { if (event.target === videoDialog) closeTutorial(); });
   document.addEventListener("keydown", (event) => {
     if (!document.getElementById("view-line").classList.contains("active")) return;
-    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open) return;
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open) return;
     if (event.key === "ArrowLeft" && lineIndex > 0) { event.preventDefault(); lineIndex -= 1; renderLine(); }
     if (event.key === "ArrowRight" && lineIndex < SCORE_DATA.systems - 1) { event.preventDefault(); lineIndex += 1; renderLine(); }
   });
