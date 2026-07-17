@@ -52,6 +52,12 @@
       const rate = spokenRate(rateMatch[1]);
       return { type: "backing-rate", rate, signature: `backing-rate-${rate}` };
     }
+    const seekMatch = text.match(/(快进|前进|后退|快退)([零〇一二两三四五六七八九十\d]+)秒/);
+    if (seekMatch) {
+      const seconds = chineseNumber(seekMatch[2]);
+      const direction = /快进|前进/.test(seekMatch[1]) ? 1 : -1;
+      return { type: "seek-backing", seconds: direction * seconds, signature: `seek-backing-${direction * seconds}` };
+    }
     if (/(暂停|停止|关闭|关掉)(一下)?伴奏/.test(text)) return { type: "pause-backing", signature: "pause-backing" };
     if (/(播放|开始|打开)(一下)?伴奏|^伴奏$/.test(text)) return { type: "play-backing", signature: "play-backing" };
     if (/(关闭|关掉|退出)(一下)?(教学)?视频/.test(text)) return { type: "close-video", signature: "close-video" };
@@ -68,6 +74,7 @@
     if (command.type === "play-backing") return window.DrumPracticeVoice.playBacking();
     if (command.type === "pause-backing") return window.DrumPracticeVoice.pauseBacking();
     if (command.type === "backing-rate") return window.DrumPracticeVoice.setBackingRate(command.rate);
+    if (command.type === "seek-backing") return window.DrumPracticeVoice.seekBacking(command.seconds);
     if (command.type === "close-video") return window.DrumPracticeVoice.closeVideo();
     if (mode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
     if (mode === "full" && ["next", "prev"].includes(command.type)) {
