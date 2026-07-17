@@ -15,6 +15,7 @@
   const GROUPS_KEY = "drum-focus-groups-v1";
   const DEFAULT_SIZE_KEY = "drum-focus-default-card-height";
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
+  const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
   const VIDEO_LIBRARY = {
@@ -72,6 +73,13 @@
   const videoTitle = document.getElementById("videoTitle");
   const videoClips = document.getElementById("videoClips");
   const videoToast = document.getElementById("videoToast");
+  const backingPlayer = document.getElementById("backingPlayer");
+  const backingAudio = document.getElementById("backingAudio");
+  const backingDisc = document.getElementById("backingDisc");
+  const backingToggle = document.getElementById("backingToggle");
+  const backingRate = document.getElementById("backingRate");
+  const backingRateValue = document.getElementById("backingRateValue");
+  const backingStatus = document.getElementById("backingStatus");
   let activeTutorialClips = [];
   let videoToastTimer = null;
 
@@ -148,6 +156,57 @@
     videoToast.textContent = message;
     videoToast.classList.add("show");
     videoToastTimer = setTimeout(() => videoToast.classList.remove("show"), 1500);
+  }
+
+  function clampBackingRate(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return Number.NaN;
+    return Math.max(0.5, Math.min(2, Math.round(number * 20) / 20));
+  }
+
+  function syncBackingPlayer() {
+    const rate = clampBackingRate(backingAudio.playbackRate) || 1;
+    const playing = !backingAudio.paused && !backingAudio.ended;
+    backingPlayer.classList.toggle("playing", playing);
+    backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
+    backingToggle.textContent = playing ? "暂停" : "播放";
+    backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
+    backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
+  }
+
+  function setBackingRate(value, notify = false) {
+    const rate = clampBackingRate(value);
+    if (!Number.isFinite(rate)) return { ok: false, message: "没有识别到有效的伴奏速率" };
+    backingAudio.playbackRate = rate;
+    backingAudio.defaultPlaybackRate = rate;
+    backingAudio.preservesPitch = true;
+    if ("webkitPreservesPitch" in backingAudio) backingAudio.webkitPreservesPitch = true;
+    backingRate.value = String(rate);
+    backingRateValue.textContent = `${rate.toFixed(2)}×`;
+    writeStorage(BACKING_RATE_KEY, rate);
+    syncBackingPlayer();
+    if (notify) showVideoToast(`伴奏速率已调整为 ${rate.toFixed(2)} 倍`);
+    return { ok: true, message: `伴奏速率已调整为 ${rate.toFixed(2)} 倍` };
+  }
+
+  function playBacking() {
+    const request = backingAudio.play();
+    if (request) request.catch(() => {
+      syncBackingPlayer();
+      showVideoToast("浏览器阻止了自动播放，请先点击一次伴奏播放按钮");
+    });
+    return { ok: true, message: `正在以 ${backingAudio.playbackRate.toFixed(2)} 倍速播放伴奏` };
+  }
+
+  function pauseBacking() {
+    if (backingAudio.paused) return { ok: false, message: "伴奏当前没有播放" };
+    backingAudio.pause();
+    return { ok: true, message: "已暂停伴奏" };
+  }
+
+  function toggleBacking() {
+    if (backingAudio.paused) playBacking();
+    else pauseBacking();
   }
 
   function playTutorialClip(index) {
@@ -870,7 +929,10 @@
     nextLine: () => voiceMoveLine(1),
     prevLine: () => voiceMoveLine(-1),
     playVideo: voicePlayTutorial,
-    closeVideo: voiceCloseTutorial
+    closeVideo: voiceCloseTutorial,
+    playBacking,
+    pauseBacking,
+    setBackingRate
   };
 
   function updatePageScale() {
@@ -961,6 +1023,18 @@
   document.getElementById("closeVideo").addEventListener("click", closeTutorial);
   videoDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeTutorial(); });
   videoDialog.addEventListener("click", (event) => { if (event.target === videoDialog) closeTutorial(); });
+  backingDisc.addEventListener("click", toggleBacking);
+  backingToggle.addEventListener("click", toggleBacking);
+  backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
+  backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
+  backingAudio.addEventListener("play", syncBackingPlayer);
+  backingAudio.addEventListener("pause", syncBackingPlayer);
+  backingAudio.addEventListener("ended", syncBackingPlayer);
+  backingAudio.addEventListener("ratechange", syncBackingPlayer);
+  backingAudio.addEventListener("error", () => {
+    backingStatus.textContent = "伴奏加载失败";
+    backingPlayer.classList.remove("playing");
+  });
   document.addEventListener("keydown", (event) => {
     if (!document.getElementById("view-line").classList.contains("active")) return;
     if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open) return;
@@ -969,6 +1043,7 @@
   });
 
   buildPalette();
+  setBackingRate(readStorage(BACKING_RATE_KEY, 1));
   syncTemplateControl();
   buildFullScore();
   updatePageScale();

@@ -8,7 +8,7 @@
   function normalizeSpeechText(value) {
     return String(value || "")
       .replace(/\s+/g, "")
-      .replace(/[，。！？、,.!?]/g, "")
+      .replace(/[，。！？、,!?]/g, "")
       .replace(/买当劳|麦当牢|买当牢/g, WAKE_WORD);
   }
 
@@ -25,6 +25,19 @@
     return map[cleaned] ?? Number.NaN;
   }
 
+  function spokenRate(raw) {
+    const value = String(raw || "").replace(/倍|速/g, "");
+    if (/^\d+(?:\.\d+)?$/.test(value)) return Number(value);
+    if (value.includes("点")) {
+      const [wholeRaw, decimalRaw = ""] = value.split("点");
+      const whole = chineseNumber(wholeRaw || "零");
+      const map = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+      const decimal = [...decimalRaw].map((character) => map[character] ?? character).join("");
+      if (Number.isFinite(whole) && /^\d+$/.test(decimal)) return Number(`${whole}.${decimal}`);
+    }
+    return chineseNumber(value);
+  }
+
   function parseCommand(value) {
     const text = normalizeSpeechText(value);
     const measureMatch = text.match(/第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节/);
@@ -32,6 +45,15 @@
       const number = chineseNumber(measureMatch[1]);
       return { type: "measure", number, signature: `measure-${number}` };
     }
+    const rateMatch = text.match(/伴奏(?:速率|速度)([零〇一二两三四五六七八九十点\d.]+)/)
+      || text.match(/([零〇一二两三四五六七八九十点\d.]+)倍速伴奏/)
+      || text.match(/伴奏([零〇一二两三四五六七八九十点\d.]+)倍速/);
+    if (rateMatch) {
+      const rate = spokenRate(rateMatch[1]);
+      return { type: "backing-rate", rate, signature: `backing-rate-${rate}` };
+    }
+    if (/(暂停|停止|关闭|关掉)(一下)?伴奏/.test(text)) return { type: "pause-backing", signature: "pause-backing" };
+    if (/(播放|开始|打开)(一下)?伴奏|^伴奏$/.test(text)) return { type: "play-backing", signature: "play-backing" };
     if (/(关闭|关掉|退出)(一下)?(教学)?视频/.test(text)) return { type: "close-video", signature: "close-video" };
     if (/(播放|打开|观看)(一下)?(教学)?视频|^(教学)?视频$/.test(text)) return { type: "play-video", signature: "play-video" };
     if (/下一(个)?(小节|节)|往后(一|1)(个)?(小节|节)/.test(text)) return { type: "next-measure", signature: "next-measure" };
@@ -43,6 +65,9 @@
 
   function execute(command) {
     const mode = window.DrumPracticeVoice.getMode();
+    if (command.type === "play-backing") return window.DrumPracticeVoice.playBacking();
+    if (command.type === "pause-backing") return window.DrumPracticeVoice.pauseBacking();
+    if (command.type === "backing-rate") return window.DrumPracticeVoice.setBackingRate(command.rate);
     if (command.type === "close-video") return window.DrumPracticeVoice.closeVideo();
     if (mode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
     if (mode === "full" && ["next", "prev"].includes(command.type)) {
@@ -107,8 +132,8 @@
 
   window.addEventListener("practice-modechange", (event) => {
     const mode = event.detail?.mode;
-    if (mode === "full") transcript.textContent = "完整谱面：支持定位、上下小节和教学视频";
-    if (mode === "line") transcript.textContent = "按行：支持上下行、上下小节和教学视频";
-    if (mode === "arrange") transcript.textContent = "小节编排：暂不执行语音指令";
+    if (mode === "full") transcript.textContent = "完整谱面：支持定位、上下小节、教学视频和伴奏";
+    if (mode === "line") transcript.textContent = "按行：支持上下行、上下小节、教学视频和伴奏";
+    if (mode === "arrange") transcript.textContent = "小节编排：仍可控制伴奏，其他语音指令暂不执行";
   });
 })();

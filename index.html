@@ -30,10 +30,17 @@
     @media(max-width:1100px){.measure-slot{flex-basis:var(--slot-width,var(--template-width))}}
     @media(max-width:600px){.video-shell{padding:11px}.video-footer{align-items:flex-start;flex-direction:column}.tutorial-video{max-height:62vh}.video-loop-note{white-space:normal}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important}}
+    .backing-player{position:fixed;z-index:80;right:18px;bottom:18px;display:flex;align-items:center;gap:11px;min-width:286px;padding:10px 12px;border:1px solid rgba(197,201,213,.88);border-radius:15px;background:rgba(250,249,246,.94);box-shadow:0 14px 38px rgba(38,43,58,.16);backdrop-filter:blur(16px)}.backing-disc{position:relative;width:50px;height:50px;flex:0 0 auto;padding:0;border:0;border-radius:50%;background:repeating-radial-gradient(circle,#191b22 0 3px,#292c35 4px 6px),conic-gradient(#111 0 12%,#383b45 12% 25%,#15171d 25% 48%,#343741 48% 67%,#12141a 67% 100%);box-shadow:0 5px 13px rgba(21,24,32,.28),inset 0 0 0 1px rgba(255,255,255,.12);cursor:pointer}.backing-disc:before{position:absolute;inset:17px;border:4px solid #e9edf9;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #111;content:""}.backing-disc:after{position:absolute;inset:23px;border-radius:50%;background:#fff;content:""}.backing-player.playing .backing-disc{animation:backing-spin var(--disc-speed,2.4s) linear infinite}.backing-body{min-width:0;flex:1}.backing-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:7px}.backing-head strong{font-size:11px}.backing-status{max-width:125px;overflow:hidden;color:#858b96;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.backing-controls{display:flex;align-items:center;gap:8px}.backing-action{height:27px;padding:0 10px;border:0;border-radius:7px;background:var(--ink);color:#fff;font-size:9px;font-weight:750;cursor:pointer}.backing-action:hover{background:#353a47}.backing-rate{display:flex;align-items:center;gap:5px;color:#727985;font-size:9px;white-space:nowrap}.backing-rate input{width:82px;accent-color:var(--accent)}.backing-rate output{min-width:31px;color:var(--accent);font-variant-numeric:tabular-nums}@keyframes backing-spin{to{transform:rotate(360deg)}}@media(max-width:600px){.backing-player{right:10px;bottom:10px;left:10px;min-width:0}.backing-status{max-width:100px}.backing-rate input{width:min(22vw,82px)}}
+    .voice-activity-film{background:linear-gradient(145deg,rgba(205,220,255,.08),rgba(90,130,230,.1));animation:none}
   </style>
 </head>
 <body>
   <div class="voice-activity" id="voiceActivity" aria-hidden="true"><div class="voice-activity-film"></div><i class="voice-water-ripple r1"></i><i class="voice-water-ripple r2"></i><i class="voice-water-ripple r3"></i><div class="voice-activity-frame"></div><div class="voice-recognition-result" id="voiceRecognitionResult"></div><div class="voice-activity-badge"><span class="voice-activity-waves" aria-hidden="true"><i></i><i></i><i></i></span><span id="voiceActivityText">可以说语音指令 · 10 秒</span></div></div>
+  <aside class="backing-player" id="backingPlayer" aria-label="伴奏播放器">
+    <button class="backing-disc" id="backingDisc" type="button" aria-label="播放伴奏"></button>
+    <div class="backing-body"><div class="backing-head"><strong>练习伴奏</strong><span class="backing-status" id="backingStatus">准备播放</span></div><div class="backing-controls"><button class="backing-action" id="backingToggle" type="button">播放</button><label class="backing-rate">倍速<input id="backingRate" type="range" min="0.5" max="2" step="0.05" value="1"><output id="backingRateValue">1.00×</output></label></div></div>
+    <audio id="backingAudio" src="assets/就让这大雨全都落下.mp3" preload="metadata"></audio>
+  </aside>
   <main class="app">
     <header class="topbar">
       <div class="brand"><div class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></div><div><p class="eyebrow">DRUM FOCUS · OFFLINE</p><h1>谱面练习台</h1></div></div>
@@ -102,8 +109,8 @@
   <div class="video-toast" id="videoToast" role="status" aria-live="polite"></div>
 
   <script src="measures.js"></script>
-  <script src="app.js?v=20260717-voice-navigation"></script>
-  <script src="voice-adapter.js?v=20260717-renew-window"></script>
-  <script src="qwen-cloud.js?v=20260717-water-ripple"></script>
+  <script src="app.js?v=20260717-backing-track"></script>
+  <script src="voice-adapter.js?v=20260717-backing-track"></script>
+  <script src="qwen-cloud.js?v=20260717-backing-track"></script>
 </body>
 </html>
