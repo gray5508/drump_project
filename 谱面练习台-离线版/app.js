@@ -52,6 +52,7 @@
 
   const paletteElement = document.getElementById("palette");
   const pageElement = document.getElementById("page");
+  const viewportElement = document.querySelector(".viewport");
   const layerElement = document.getElementById("layer");
   const selectedCountElement = document.getElementById("selectedCount");
   const markedStatusElement = document.getElementById("markedStatus");
@@ -833,13 +834,23 @@
     prevLine: () => voiceMoveLine(-1)
   };
 
+  function updatePageScale() {
+    const viewportStyle = getComputedStyle(viewportElement);
+    const horizontalPadding = parseFloat(viewportStyle.paddingLeft) + parseFloat(viewportStyle.paddingRight);
+    const availableWidth = Math.max(280, viewportElement.clientWidth - horizontalPadding);
+    const baseWidth = window.matchMedia("(max-width: 1100px)").matches ? Math.min(910, availableWidth) : 910;
+    pageElement.style.width = `${Math.round(baseWidth * zoom / 100)}px`;
+    document.getElementById("zoomText").textContent = `${zoom}%`;
+  }
+
   document.querySelectorAll(".mode-tab").forEach((tab) => tab.addEventListener("click", () => setMode(tab.dataset.mode)));
   document.getElementById("minus").addEventListener("click", () => {
-    zoom = Math.max(70, zoom - 10); pageElement.style.width = `${zoom * 9.1}px`; document.getElementById("zoomText").textContent = `${zoom}%`;
+    zoom = Math.max(70, zoom - 10); updatePageScale();
   });
   document.getElementById("plus").addEventListener("click", () => {
-    zoom = Math.min(150, zoom + 10); pageElement.style.width = `${zoom * 9.1}px`; document.getElementById("zoomText").textContent = `${zoom}%`;
+    zoom = Math.min(150, zoom + 10); updatePageScale();
   });
+  window.addEventListener("resize", updatePageScale);
   clearElement.addEventListener("click", () => { marks = {}; refreshSelectionState(); });
   document.getElementById("prevLine").addEventListener("click", () => { if (lineIndex > 0) { lineIndex -= 1; renderLine(); } });
   document.getElementById("nextLine").addEventListener("click", () => { if (lineIndex < SCORE_DATA.systems - 1) { lineIndex += 1; renderLine(); } });
@@ -921,6 +932,7 @@
   buildPalette();
   syncTemplateControl();
   buildFullScore();
+  updatePageScale();
   buildLineJump();
   renderLine();
   renderGroups();
