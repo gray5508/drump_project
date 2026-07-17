@@ -80,9 +80,10 @@
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
-  const backingSeekDialog = document.getElementById("backingSeekDialog");
-  const closeBackingSeek = document.getElementById("closeBackingSeek");
-  const backingProgress = document.getElementById("backingProgress");
+  const backingSeekHud = document.getElementById("backingSeekHud");
+  const backingSeekTrack = document.getElementById("backingSeekTrack");
+  const backingSeekFill = document.getElementById("backingSeekFill");
+  const backingSeekThumb = document.getElementById("backingSeekThumb");
   const backingCurrentTime = document.getElementById("backingCurrentTime");
   const backingDuration = document.getElementById("backingDuration");
   let backingSeeking = false;
@@ -182,27 +183,18 @@
   function syncBackingProgress() {
     const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
     const displayedTime = backingSeeking && Number.isFinite(backingSeekTarget) ? backingSeekTarget : backingAudio.currentTime;
-    if (!backingSeeking) backingProgress.value = duration ? String(Math.round(backingAudio.currentTime / duration * 1000)) : "0";
+    const fraction = duration ? Math.max(0, Math.min(1, displayedTime / duration)) : 0;
+    backingSeekFill.style.width = `${fraction * 100}%`;
+    backingSeekThumb.style.left = `${fraction * 100}%`;
     backingCurrentTime.textContent = formatBackingTime(displayedTime);
     backingDuration.textContent = formatBackingTime(duration);
-  }
-
-  function finishBackingSeek() {
-    if (Number.isFinite(backingSeekTarget)) backingAudio.currentTime = backingSeekTarget;
-    setTimeout(() => {
-      backingSeeking = false;
-      backingSeekTarget = null;
-      syncBackingProgress();
-    }, 120);
   }
 
   function syncBackingPlayer() {
     const rate = clampBackingRate(backingAudio.playbackRate) || 1;
     const playing = !backingAudio.paused && !backingAudio.ended;
     backingPlayer.classList.toggle("playing", playing);
-    backingSeekDialog.classList.toggle("playing", playing);
     backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
-    backingSeekDialog.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
     backingToggle.textContent = playing ? "暂停" : "播放";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
     backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
@@ -259,17 +251,32 @@
   }
 
   function openBackingSeek() {
+    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    if (!duration || !backingHoldStart) return false;
+    backingHoldStart.active = true;
+    backingHoldStart.startFraction = Math.max(0, Math.min(1, backingAudio.currentTime / duration));
+    backingSeeking = true;
+    backingSeekTarget = backingAudio.currentTime;
+    backingPlayer.classList.add("seeking");
+    backingSeekHud.classList.add("active");
+    backingSeekHud.setAttribute("aria-hidden", "false");
     syncBackingProgress();
-    if (!backingSeekDialog.open) backingSeekDialog.showModal();
+    return true;
   }
 
-  function closeBackingSeekDialog() {
-    if (backingSeekDialog.open) backingSeekDialog.close();
+  function closeBackingSeek() {
+    backingPlayer.classList.remove("seeking");
+    backingSeekHud.classList.remove("active");
+    backingSeekHud.setAttribute("aria-hidden", "true");
   }
 
   function cancelBackingHold() {
     clearTimeout(backingHoldTimer);
     backingHoldTimer = null;
+    const captureTarget = backingHoldStart?.captureTarget;
+    if (captureTarget?.hasPointerCapture?.(backingHoldStart.pointerId)) {
+      try { captureTarget.releasePointerCapture(backingHoldStart.pointerId); } catch (error) { /* Pointer already ended. */ }
+    }
     backingHoldStart = null;
   }
 
@@ -277,18 +284,48 @@
     if (event.button !== undefined && event.button !== 0) return;
     if (event.target.closest("input,.backing-action")) return;
     cancelBackingHold();
-    backingHoldStart = { x: event.clientX, y: event.clientY };
+    const captureTarget = event.target instanceof Element ? event.target : backingPlayer;
+    backingHoldStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, captureTarget, active: false, startFraction: 0 };
     backingHoldTimer = setTimeout(() => {
       suppressBackingToggleUntil = Date.now() + 800;
-      openBackingSeek();
+      if (!openBackingSeek()) {
+        showVideoToast("伴奏仍在加载，请稍后再试");
+        cancelBackingHold();
+        return;
+      }
+      try { captureTarget.setPointerCapture?.(event.pointerId); } catch (error) { /* Synthetic/legacy pointers can still use bubbled events. */ }
       backingHoldTimer = null;
       if (navigator.vibrate) navigator.vibrate(35);
     }, 580);
   }
 
   function moveBackingHold(event) {
-    if (!backingHoldStart) return;
-    if (Math.hypot(event.clientX - backingHoldStart.x, event.clientY - backingHoldStart.y) > 10) cancelBackingHold();
+    if (!backingHoldStart || event.pointerId !== backingHoldStart.pointerId) return;
+    if (!backingHoldStart.active) {
+      if (Math.hypot(event.clientX - backingHoldStart.x, event.clientY - backingHoldStart.y) > 10) cancelBackingHold();
+      return;
+    }
+    event.preventDefault();
+    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    const dragWidth = Math.max(240, backingSeekTrack.getBoundingClientRect().width);
+    const fraction = Math.max(0, Math.min(1, backingHoldStart.startFraction + (event.clientX - backingHoldStart.x) / dragWidth));
+    backingSeekTarget = duration * fraction;
+    syncBackingProgress();
+  }
+
+  function endBackingHold(event) {
+    if (!backingHoldStart || event.pointerId !== backingHoldStart.pointerId) return;
+    const wasActive = backingHoldStart.active;
+    if (wasActive) {
+      event.preventDefault();
+      if (Number.isFinite(backingSeekTarget)) backingAudio.currentTime = backingSeekTarget;
+      suppressBackingToggleUntil = Date.now() + 800;
+      backingSeeking = false;
+      backingSeekTarget = null;
+      closeBackingSeek();
+    }
+    cancelBackingHold();
+    if (wasActive) syncBackingProgress();
   }
 
   function handleBackingToggle() {
@@ -1112,28 +1149,14 @@
   videoDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeTutorial(); });
   videoDialog.addEventListener("click", (event) => { if (event.target === videoDialog) closeTutorial(); });
   backingPlayer.addEventListener("pointerdown", startBackingHold);
-  backingPlayer.addEventListener("pointermove", moveBackingHold);
-  backingPlayer.addEventListener("pointerup", cancelBackingHold);
-  backingPlayer.addEventListener("pointercancel", cancelBackingHold);
-  backingPlayer.addEventListener("pointerleave", cancelBackingHold);
+  backingPlayer.addEventListener("pointermove", moveBackingHold, { passive: false });
+  backingPlayer.addEventListener("pointerup", endBackingHold);
+  backingPlayer.addEventListener("pointercancel", endBackingHold);
+  backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
-  backingProgress.addEventListener("pointerdown", () => { backingSeeking = true; });
-  backingProgress.addEventListener("input", () => {
-    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
-    backingSeeking = true;
-    backingSeekTarget = duration ? Number(backingProgress.value) / 1000 * duration : 0;
-    if (duration) backingAudio.currentTime = backingSeekTarget;
-    syncBackingProgress();
-  });
-  backingProgress.addEventListener("change", finishBackingSeek);
-  backingProgress.addEventListener("pointerup", finishBackingSeek);
-  backingProgress.addEventListener("pointercancel", finishBackingSeek);
-  closeBackingSeek.addEventListener("click", closeBackingSeekDialog);
-  backingSeekDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeBackingSeekDialog(); });
-  backingSeekDialog.addEventListener("click", (event) => { if (event.target === backingSeekDialog) closeBackingSeekDialog(); });
   backingAudio.addEventListener("play", syncBackingPlayer);
   backingAudio.addEventListener("pause", syncBackingPlayer);
   backingAudio.addEventListener("ended", syncBackingPlayer);
@@ -1147,7 +1170,7 @@
   });
   document.addEventListener("keydown", (event) => {
     if (!document.getElementById("view-line").classList.contains("active")) return;
-    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open || backingSeekDialog.open) return;
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open || backingHoldStart?.active) return;
     if (event.key === "ArrowLeft" && lineIndex > 0) { event.preventDefault(); lineIndex -= 1; renderLine(); }
     if (event.key === "ArrowRight" && lineIndex < SCORE_DATA.systems - 1) { event.preventDefault(); lineIndex += 1; renderLine(); }
   });
