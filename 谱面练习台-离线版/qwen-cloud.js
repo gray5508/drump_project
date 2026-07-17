@@ -9,6 +9,7 @@
   const transcript = document.getElementById("transcript");
   const voiceActivity = document.getElementById("voiceActivity");
   const voiceActivityText = document.getElementById("voiceActivityText");
+  const voiceRecognitionResult = document.getElementById("voiceRecognitionResult");
   const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, onCommand: handleCommandTriggered });
   let socket = null;
   let stream = null;
@@ -25,13 +26,34 @@
   let sessionReady = false;
   let cloudAttempt = 0;
   let phraseBoostDisabled = false;
+  let recognitionResultTimer = null;
+
+  function hideVoiceRecognitionResult() {
+    clearTimeout(recognitionResultTimer);
+    recognitionResultTimer = null;
+    if (voiceRecognitionResult) voiceRecognitionResult.classList.remove("show");
+  }
+
+  function showVoiceRecognitionResult(text) {
+    const postWakeText = String(text || "").replace(/麦当劳/g, "").trim();
+    if (!postWakeText || !voiceRecognitionResult) return;
+    clearTimeout(recognitionResultTimer);
+    voiceRecognitionResult.textContent = postWakeText;
+    voiceRecognitionResult.classList.remove("show");
+    void voiceRecognitionResult.offsetWidth;
+    voiceRecognitionResult.classList.add("show");
+    recognitionResultTimer = setTimeout(hideVoiceRecognitionResult, 1800);
+  }
 
   function setVoiceActivity(active, message = "可以说语音指令") {
     if (!voiceActivity) return;
     voiceActivity.classList.toggle("active", active);
     voiceActivity.setAttribute("aria-hidden", String(!active));
     if (voiceActivityText && message) voiceActivityText.textContent = message;
-    if (!active) voiceActivity.classList.remove("renewed");
+    if (!active) {
+      voiceActivity.classList.remove("renewed");
+      hideVoiceRecognitionResult();
+    }
   }
 
   function pulseVoiceActivity() {
@@ -136,7 +158,10 @@
       const text = event.transcript || event.text || "";
       const corrected = VoicePractice.normalizeSpeechText(text);
       transcript.textContent = corrected || "（没有识别到文字）";
-      if (corrected) gate.process(corrected, true);
+      if (corrected) {
+        showVoiceRecognitionResult(corrected);
+        gate.process(corrected, true);
+      }
       return;
     }
     if (event.type === "proxy.error" || event.type === "error") {
