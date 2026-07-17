@@ -818,6 +818,41 @@
     return { ok: true, message: direction > 0 ? "已执行：下一行" : "已执行：上一行" };
   }
 
+  function singleVoiceSelection() {
+    const ids = selectedIds();
+    if (ids.length !== 1) {
+      return { ok: false, message: ids.length ? "请只标记一个小节后再执行" : "请先标记一个小节" };
+    }
+    return { ok: true, id: ids[0], measure: measureMap.get(ids[0]) };
+  }
+
+  function voiceMoveMeasure(direction) {
+    if (currentMode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
+    const selected = singleVoiceSelection();
+    if (!selected.ok) return selected;
+    const currentIndex = SCORE_DATA.measures.findIndex((measure) => measure.id === selected.id);
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= SCORE_DATA.measures.length) {
+      return { ok: false, message: direction > 0 ? "已经是最后一个小节" : "已经是第一个小节" };
+    }
+    return voiceGoToMeasure(SCORE_DATA.measures[nextIndex].measureStart);
+  }
+
+  function voicePlayTutorial() {
+    const selected = singleVoiceSelection();
+    if (!selected.ok) return selected;
+    const clips = tutorialClipsFor(selected.id);
+    if (!clips.length) return { ok: false, message: `第 ${selected.measure.label} 小节没有教学视频` };
+    openTutorial(selected.id);
+    return { ok: true, message: `正在播放第 ${selected.measure.label} 小节教学视频` };
+  }
+
+  function voiceCloseTutorial() {
+    if (!videoDialog.open) return { ok: false, message: "当前没有打开的教学视频" };
+    closeTutorial();
+    return { ok: true, message: "已关闭教学视频" };
+  }
+
   function setMode(mode) {
     currentMode = mode;
     document.querySelectorAll(".mode-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.mode === mode));
@@ -830,8 +865,12 @@
   window.DrumPracticeVoice = {
     getMode: () => currentMode,
     goToMeasure: voiceGoToMeasure,
+    nextMeasure: () => voiceMoveMeasure(1),
+    prevMeasure: () => voiceMoveMeasure(-1),
     nextLine: () => voiceMoveLine(1),
-    prevLine: () => voiceMoveLine(-1)
+    prevLine: () => voiceMoveLine(-1),
+    playVideo: voicePlayTutorial,
+    closeVideo: voiceCloseTutorial
   };
 
   function updatePageScale() {

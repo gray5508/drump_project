@@ -62,7 +62,7 @@
         input_audio_transcription: {
           language: "zh",
           corpus: {
-            text: "小节。下一行。上一行。下一页。上一页。第一个小节。第十小节。第四十六小节。"
+            text: "小节。下一小节。下一节。上一小节。上一节。下一行。上一行。播放视频。播放教学视频。视频。关闭视频。关闭教学视频。第一个小节。第十小节。第四十六小节。"
           }
         },
         turn_detection: {
@@ -81,6 +81,7 @@
     }
     if (event.type === "session.updated") {
       sessionReady = true;
+      gate.wake();
       clearTimeout(cloudConnectTimer);
       cloudConnectTimer = null;
       clearTimeout(cloudWindowTimer);
