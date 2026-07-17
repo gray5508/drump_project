@@ -232,6 +232,20 @@
     return { ok: true, message: "已暂停伴奏" };
   }
 
+  function seekBacking(seconds) {
+    const amount = Number(seconds);
+    if (!Number.isFinite(amount) || amount === 0) return { ok: false, message: "没有识别到有效的快进或后退时间" };
+    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    if (!duration) return { ok: false, message: "伴奏仍在加载，请稍后再试" };
+    const target = Math.max(0, Math.min(duration, backingAudio.currentTime + amount));
+    backingAudio.currentTime = target;
+    syncBackingProgress();
+    const action = amount > 0 ? "快进" : "后退";
+    const moved = Math.round(Math.abs(amount));
+    showVideoToast(`伴奏已${action} ${moved} 秒`);
+    return { ok: true, message: `伴奏已${action} ${moved} 秒，当前 ${formatBackingTime(target)}` };
+  }
+
   function toggleBacking() {
     if (backingAudio.paused) playBacking();
     else pauseBacking();
@@ -960,7 +974,8 @@
     closeVideo: voiceCloseTutorial,
     playBacking,
     pauseBacking,
-    setBackingRate
+    setBackingRate,
+    seekBacking
   };
 
   function updatePageScale() {
