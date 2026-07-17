@@ -80,6 +80,11 @@
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
+  const backingProgress = document.getElementById("backingProgress");
+  const backingCurrentTime = document.getElementById("backingCurrentTime");
+  const backingDuration = document.getElementById("backingDuration");
+  let backingSeeking = false;
+  let backingSeekTarget = null;
   let activeTutorialClips = [];
   let videoToastTimer = null;
 
@@ -164,6 +169,28 @@
     return Math.max(0.5, Math.min(2, Math.round(number * 20) / 20));
   }
 
+  function formatBackingTime(value) {
+    const seconds = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+
+  function syncBackingProgress() {
+    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    const displayedTime = backingSeeking && Number.isFinite(backingSeekTarget) ? backingSeekTarget : backingAudio.currentTime;
+    if (!backingSeeking) backingProgress.value = duration ? String(Math.round(backingAudio.currentTime / duration * 1000)) : "0";
+    backingCurrentTime.textContent = formatBackingTime(displayedTime);
+    backingDuration.textContent = formatBackingTime(duration);
+  }
+
+  function finishBackingSeek() {
+    if (Number.isFinite(backingSeekTarget)) backingAudio.currentTime = backingSeekTarget;
+    setTimeout(() => {
+      backingSeeking = false;
+      backingSeekTarget = null;
+      syncBackingProgress();
+    }, 120);
+  }
+
   function syncBackingPlayer() {
     const rate = clampBackingRate(backingAudio.playbackRate) || 1;
     const playing = !backingAudio.paused && !backingAudio.ended;
@@ -172,6 +199,7 @@
     backingToggle.textContent = playing ? "暂停" : "播放";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
     backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
+    syncBackingProgress();
   }
 
   function setBackingRate(value, notify = false) {
@@ -1027,10 +1055,24 @@
   backingToggle.addEventListener("click", toggleBacking);
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
+  backingProgress.addEventListener("pointerdown", () => { backingSeeking = true; });
+  backingProgress.addEventListener("input", () => {
+    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    backingSeeking = true;
+    backingSeekTarget = duration ? Number(backingProgress.value) / 1000 * duration : 0;
+    if (duration) backingAudio.currentTime = backingSeekTarget;
+    syncBackingProgress();
+  });
+  backingProgress.addEventListener("change", finishBackingSeek);
+  backingProgress.addEventListener("pointerup", finishBackingSeek);
+  backingProgress.addEventListener("pointercancel", finishBackingSeek);
   backingAudio.addEventListener("play", syncBackingPlayer);
   backingAudio.addEventListener("pause", syncBackingPlayer);
   backingAudio.addEventListener("ended", syncBackingPlayer);
   backingAudio.addEventListener("ratechange", syncBackingPlayer);
+  backingAudio.addEventListener("loadedmetadata", syncBackingProgress);
+  backingAudio.addEventListener("durationchange", syncBackingProgress);
+  backingAudio.addEventListener("timeupdate", syncBackingProgress);
   backingAudio.addEventListener("error", () => {
     backingStatus.textContent = "伴奏加载失败";
     backingPlayer.classList.remove("playing");
