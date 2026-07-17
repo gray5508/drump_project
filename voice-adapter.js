@@ -88,8 +88,10 @@
       lastSignature = command.signature;
       lastCommandAt = now;
       const result = execute(command);
+      activeUntil = Date.now() + activeMs;
+      if (typeof options.onCommand === "function") options.onCommand(command, result);
       setStatus(result.message);
-      return { text, handled: true, command };
+      return { text, handled: true, command, result };
     }
 
     function reset() {

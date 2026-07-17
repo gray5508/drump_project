@@ -7,7 +7,9 @@
   const button = document.getElementById("listenButton");
   const label = document.getElementById("listenLabel");
   const transcript = document.getElementById("transcript");
-  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, closeMs: 10000 });
+  const voiceActivity = document.getElementById("voiceActivity");
+  const voiceActivityText = document.getElementById("voiceActivityText");
+  const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, onCommand: handleCommandTriggered });
   let socket = null;
   let stream = null;
   let audioContext = null;
@@ -23,6 +25,33 @@
   let sessionReady = false;
   let cloudAttempt = 0;
   let phraseBoostDisabled = false;
+
+  function setVoiceActivity(active, message = "可以说语音指令") {
+    if (!voiceActivity) return;
+    voiceActivity.classList.toggle("active", active);
+    voiceActivity.setAttribute("aria-hidden", String(!active));
+    if (voiceActivityText && message) voiceActivityText.textContent = message;
+    if (!active) voiceActivity.classList.remove("renewed");
+  }
+
+  function pulseVoiceActivity() {
+    if (!voiceActivity) return;
+    voiceActivity.classList.remove("renewed");
+    void voiceActivity.offsetWidth;
+    voiceActivity.classList.add("renewed");
+  }
+
+  function armCommandWindow() {
+    clearTimeout(cloudWindowTimer);
+    cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
+  }
+
+  function handleCommandTriggered() {
+    if (!listening || phase !== "cloud" || !sessionReady) return;
+    armCommandWindow();
+    if (voiceActivityText) voiceActivityText.textContent = "指令已执行 · 继续聆听 10 秒";
+    pulseVoiceActivity();
+  }
 
   function eventId() {
     return `event_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -84,8 +113,8 @@
       gate.wake();
       clearTimeout(cloudConnectTimer);
       cloudConnectTimer = null;
-      clearTimeout(cloudWindowTimer);
-      cloudWindowTimer = setTimeout(() => resumeWakeMode("10秒指令窗口已结束，重新等待“麦当劳”"), 10000);
+      armCommandWindow();
+      setVoiceActivity(true, "可以说语音指令 · 10 秒");
       transcript.textContent = "千问已接管，请说练习指令…";
       VoicePractice.setStatus("千问实时识别已连接，本次窗口将在10秒后关闭", true, "success");
       return;
@@ -175,6 +204,7 @@
         stopWakeRecognition();
         transcript.textContent = "麦当劳已唤醒，正在连接千问…";
         VoicePractice.setStatus("已唤醒，正在切换到千问实时识别", true, "success");
+        setVoiceActivity(true, "已唤醒 · 正在连接语音识别");
         if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
         clearTimeout(cloudConnectTimer);
         cloudConnectTimer = setTimeout(() => resumeWakeMode("千问连接超时，已返回“麦当劳”唤醒待机"), 15000);
@@ -310,6 +340,7 @@
     cloudConnectTimer = null;
     closeCloudResources();
     gate.reset();
+    setVoiceActivity(false);
     if (!listening) return;
     phase = "wake";
     sync();
@@ -326,6 +357,7 @@
     listening = true;
     phase = "wake";
     gate.reset();
+    setVoiceActivity(false);
     sync();
     startWakeRecognition();
   }
@@ -340,6 +372,7 @@
     stopWakeRecognition();
     closeCloudResources();
     gate.reset();
+    setVoiceActivity(false);
     transcript.textContent = "等待开始…";
     sync();
   }
