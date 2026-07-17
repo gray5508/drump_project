@@ -80,11 +80,16 @@
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
+  const backingSeekDialog = document.getElementById("backingSeekDialog");
+  const closeBackingSeek = document.getElementById("closeBackingSeek");
   const backingProgress = document.getElementById("backingProgress");
   const backingCurrentTime = document.getElementById("backingCurrentTime");
   const backingDuration = document.getElementById("backingDuration");
   let backingSeeking = false;
   let backingSeekTarget = null;
+  let backingHoldTimer = null;
+  let backingHoldStart = null;
+  let suppressBackingToggleUntil = 0;
   let activeTutorialClips = [];
   let videoToastTimer = null;
 
@@ -195,7 +200,9 @@
     const rate = clampBackingRate(backingAudio.playbackRate) || 1;
     const playing = !backingAudio.paused && !backingAudio.ended;
     backingPlayer.classList.toggle("playing", playing);
+    backingSeekDialog.classList.toggle("playing", playing);
     backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
+    backingSeekDialog.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
     backingToggle.textContent = playing ? "暂停" : "播放";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
     backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
@@ -249,6 +256,44 @@
   function toggleBacking() {
     if (backingAudio.paused) playBacking();
     else pauseBacking();
+  }
+
+  function openBackingSeek() {
+    syncBackingProgress();
+    if (!backingSeekDialog.open) backingSeekDialog.showModal();
+  }
+
+  function closeBackingSeekDialog() {
+    if (backingSeekDialog.open) backingSeekDialog.close();
+  }
+
+  function cancelBackingHold() {
+    clearTimeout(backingHoldTimer);
+    backingHoldTimer = null;
+    backingHoldStart = null;
+  }
+
+  function startBackingHold(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest("input,.backing-action")) return;
+    cancelBackingHold();
+    backingHoldStart = { x: event.clientX, y: event.clientY };
+    backingHoldTimer = setTimeout(() => {
+      suppressBackingToggleUntil = Date.now() + 800;
+      openBackingSeek();
+      backingHoldTimer = null;
+      if (navigator.vibrate) navigator.vibrate(35);
+    }, 580);
+  }
+
+  function moveBackingHold(event) {
+    if (!backingHoldStart) return;
+    if (Math.hypot(event.clientX - backingHoldStart.x, event.clientY - backingHoldStart.y) > 10) cancelBackingHold();
+  }
+
+  function handleBackingToggle() {
+    if (Date.now() < suppressBackingToggleUntil) return;
+    toggleBacking();
   }
 
   function playTutorialClip(index) {
@@ -1066,7 +1111,12 @@
   document.getElementById("closeVideo").addEventListener("click", closeTutorial);
   videoDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeTutorial(); });
   videoDialog.addEventListener("click", (event) => { if (event.target === videoDialog) closeTutorial(); });
-  backingDisc.addEventListener("click", toggleBacking);
+  backingPlayer.addEventListener("pointerdown", startBackingHold);
+  backingPlayer.addEventListener("pointermove", moveBackingHold);
+  backingPlayer.addEventListener("pointerup", cancelBackingHold);
+  backingPlayer.addEventListener("pointercancel", cancelBackingHold);
+  backingPlayer.addEventListener("pointerleave", cancelBackingHold);
+  backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
@@ -1081,6 +1131,9 @@
   backingProgress.addEventListener("change", finishBackingSeek);
   backingProgress.addEventListener("pointerup", finishBackingSeek);
   backingProgress.addEventListener("pointercancel", finishBackingSeek);
+  closeBackingSeek.addEventListener("click", closeBackingSeekDialog);
+  backingSeekDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeBackingSeekDialog(); });
+  backingSeekDialog.addEventListener("click", (event) => { if (event.target === backingSeekDialog) closeBackingSeekDialog(); });
   backingAudio.addEventListener("play", syncBackingPlayer);
   backingAudio.addEventListener("pause", syncBackingPlayer);
   backingAudio.addEventListener("ended", syncBackingPlayer);
@@ -1094,7 +1147,7 @@
   });
   document.addEventListener("keydown", (event) => {
     if (!document.getElementById("view-line").classList.contains("active")) return;
-    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open) return;
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open || backingSeekDialog.open) return;
     if (event.key === "ArrowLeft" && lineIndex > 0) { event.preventDefault(); lineIndex -= 1; renderLine(); }
     if (event.key === "ArrowRight" && lineIndex < SCORE_DATA.systems - 1) { event.preventDefault(); lineIndex += 1; renderLine(); }
   });
