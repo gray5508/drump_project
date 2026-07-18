@@ -92,6 +92,8 @@
   let backingHoldStart = null;
   let suppressBackingToggleUntil = 0;
   let activeTutorialClips = [];
+  let activeTutorialId = null;
+  let activeTutorialClipIndex = -1;
   let videoToastTimer = null;
 
   function readStorage(key, fallback) {
@@ -336,6 +338,7 @@
   function playTutorialClip(index) {
     const clip = activeTutorialClips[index];
     if (!clip) return;
+    activeTutorialClipIndex = index;
     tutorialVideo.pause();
     tutorialVideo.src = clip.src;
     tutorialVideo.poster = clip.poster;
@@ -347,13 +350,14 @@
     if (playRequest) playRequest.catch(() => { /* Controls remain available when autoplay is blocked. */ });
   }
 
-  function openTutorial(id) {
+  function openTutorial(id, initialClipIndex = 0) {
     const measure = measureMap.get(id);
     activeTutorialClips = tutorialClipsFor(id);
     if (!measure || !activeTutorialClips.length) {
       showVideoToast(measure ? `第 ${measure.label} 小节还没有教学视频` : "这个小节还没有教学视频");
       return;
     }
+    activeTutorialId = id;
     videoTitle.textContent = `第 ${measure.label} 小节 · 教学视频`;
     videoClips.innerHTML = "";
     activeTutorialClips.forEach((clip, index) => {
@@ -364,7 +368,7 @@
       videoClips.appendChild(button);
     });
     if (!videoDialog.open) videoDialog.showModal();
-    playTutorialClip(0);
+    playTutorialClip(Math.max(0, Math.min(activeTutorialClips.length - 1, initialClipIndex)));
   }
 
   function closeTutorial() {
@@ -373,7 +377,15 @@
     tutorialVideo.removeAttribute("poster");
     tutorialVideo.load();
     activeTutorialClips = [];
+    activeTutorialId = null;
+    activeTutorialClipIndex = -1;
     if (videoDialog.open) videoDialog.close();
+  }
+
+  function tutorialPlaylist() {
+    return SCORE_DATA.measures.flatMap((measure) =>
+      tutorialClipsFor(measure.id).map((clip, clipIndex) => ({ id: measure.id, measure, clip, clipIndex }))
+    );
   }
 
   function attachTutorialLongPress(element, id) {
@@ -1022,12 +1034,37 @@
   }
 
   function voicePlayTutorial() {
+    if (videoDialog.open && tutorialVideo.currentSrc) {
+      const playRequest = tutorialVideo.play();
+      if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
+      return { ok: true, message: "教学视频继续播放" };
+    }
     const selected = singleVoiceSelection();
     if (!selected.ok) return selected;
     const clips = tutorialClipsFor(selected.id);
     if (!clips.length) return { ok: false, message: `第 ${selected.measure.label} 小节没有教学视频` };
     openTutorial(selected.id);
     return { ok: true, message: `正在播放第 ${selected.measure.label} 小节教学视频` };
+  }
+
+  function voicePauseTutorial() {
+    if (!videoDialog.open) return { ok: false, message: "当前没有打开的教学视频" };
+    if (tutorialVideo.paused) return { ok: true, message: "教学视频已经暂停" };
+    tutorialVideo.pause();
+    return { ok: true, message: "教学视频已暂停" };
+  }
+
+  function voiceMoveTutorial(direction) {
+    if (!videoDialog.open || !activeTutorialId) return { ok: false, message: "当前没有打开的教学视频" };
+    const playlist = tutorialPlaylist();
+    const currentIndex = playlist.findIndex((item) => item.id === activeTutorialId && item.clipIndex === activeTutorialClipIndex);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= playlist.length) {
+      return { ok: false, message: direction > 0 ? "已经是最后一个教学视频" : "已经是第一个教学视频" };
+    }
+    const target = playlist[nextIndex];
+    openTutorial(target.id, target.clipIndex);
+    return { ok: true, message: `已切换到第 ${target.measure.label} 小节 · ${target.clip.label}` };
   }
 
   function voiceCloseTutorial() {
@@ -1053,7 +1090,11 @@
     nextLine: () => voiceMoveLine(1),
     prevLine: () => voiceMoveLine(-1),
     playVideo: voicePlayTutorial,
+    pauseVideo: voicePauseTutorial,
     closeVideo: voiceCloseTutorial,
+    isVideoOpen: () => videoDialog.open,
+    nextVideo: () => voiceMoveTutorial(1),
+    prevVideo: () => voiceMoveTutorial(-1),
     playBacking,
     pauseBacking,
     setBackingRate,
