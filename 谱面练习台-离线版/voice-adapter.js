@@ -4,6 +4,32 @@
   const WAKE_WORD = "麦当劳";
   const stateLabel = document.getElementById("voiceState");
   const transcript = document.getElementById("transcript");
+  const MODE_ALIASES = new Map([
+    ["完整谱面", "full"], ["完整", "full"], ["默认", "full"], ["默认谱面", "full"], ["总谱", "full"],
+    ["按行练习", "line"], ["按行", "line"], ["行练习", "line"], ["单行练习", "line"], ["一行一行练习", "line"],
+    ["小节编排", "arrange"], ["小节排列", "arrange"], ["编排", "arrange"], ["选中小节练习", "arrange"]
+  ]);
+  const COMMAND_ALIASES = new Map([
+    ["下一小节", "next-measure"], ["下一节", "next-measure"], ["下一个小节", "next-measure"], ["下一个", "next-measure"],
+    ["下一个视频", "next-measure"], ["下一视频", "next-measure"], ["下一片段", "next-measure"], ["下一个片段", "next-measure"],
+    ["上一小节", "prev-measure"], ["上一节", "prev-measure"], ["上一个小节", "prev-measure"], ["上一个", "prev-measure"],
+    ["上一个视频", "prev-measure"], ["上一视频", "prev-measure"], ["上一片段", "prev-measure"], ["上一个片段", "prev-measure"],
+    ["下一行", "next"], ["下一页", "next"], ["往后翻", "next"], ["向后翻", "next"],
+    ["上一行", "prev"], ["上一页", "prev"], ["往前翻", "prev"], ["向前翻", "prev"],
+    ["暂停伴奏", "pause-backing"], ["停止伴奏", "pause-backing"], ["关闭伴奏", "pause-backing"], ["关掉伴奏", "pause-backing"],
+    ["播放伴奏", "play-backing"], ["开始伴奏", "play-backing"], ["打开伴奏", "play-backing"], ["继续伴奏", "play-backing"], ["伴奏", "play-backing"],
+    ["暂停视频", "pause-video"], ["视频暂停", "pause-video"], ["停止视频", "pause-video"], ["暂停播放", "pause-video"], ["停止播放", "pause-video"], ["暂停", "pause-video"],
+    ["关闭视频", "close-video"], ["关掉视频", "close-video"], ["退出视频", "close-video"], ["关闭教学视频", "close-video"],
+    ["播放视频", "play-video"], ["打开视频", "play-video"], ["观看视频", "play-video"], ["播放教学视频", "play-video"], ["继续播放", "play-video"], ["恢复播放", "play-video"], ["继续视频", "play-video"], ["恢复视频", "play-video"], ["视频", "play-video"], ["教学视频", "play-video"], ["播放", "play-video"]
+  ]);
+  const COMMAND_PATTERNS = [
+    { type: "next-measure", pattern: /^(?:切到|切换到?|往后)(?:下一|下一个|一个|一|1个|1)(?:小节|节|视频|片段)$/ },
+    { type: "next-measure", pattern: /^(?:切到|切换到?)下一个$/ },
+    { type: "prev-measure", pattern: /^(?:切到|切换到?|往前)(?:上一|上一个|一个|一|1个|1)(?:小节|节|视频|片段)$/ },
+    { type: "prev-measure", pattern: /^(?:切到|切换到?)上一个$/ },
+    { type: "next", pattern: /^(?:翻到?|切到|切换到?)(?:下一行|下一页)$/ },
+    { type: "prev", pattern: /^(?:翻到?|切到|切换到?)(?:上一行|上一页)$/ }
+  ];
 
   function normalizeSpeechText(value) {
     return String(value || "")
@@ -38,61 +64,79 @@
     return chineseNumber(value);
   }
 
-  function parseCommand(value) {
-    const text = normalizeSpeechText(value);
-    // Directional commands must be matched before numeric measure commands:
-    // “下一小节” and “上一小节” both contain “一小节” and were previously
-    // mistaken for “第一小节”.
-    if (/下一(个)?(小节|节|视频|片段)|^下一个$|往后(一|1)(个)?(小节|节|视频|片段)/.test(text)) return { type: "next-measure", signature: "next-measure" };
-    if (/上一(个)?(小节|节|视频|片段)|^上一个$|往前(一|1)(个)?(小节|节|视频|片段)/.test(text)) return { type: "prev-measure", signature: "prev-measure" };
-    const measureMatch = text.match(/第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节/);
-    if (measureMatch) {
-      const number = chineseNumber(measureMatch[1]);
-      return { type: "measure", number, signature: `measure-${number}` };
-    }
-    const rateMatch = text.match(/伴奏(?:速率|速度|倍率|倍速)([零〇一二两三四五六七八九十点\d.]+)/)
+  function commandKey(value) {
+    return normalizeSpeechText(value)
+      .replaceAll(WAKE_WORD, "")
+      .replace(/^(?:(?:请帮我|麻烦帮我|帮我|麻烦|请))+/, "")
+      .replace(/一下/g, "");
+  }
+
+  function parseModeCommand(text) {
+    const key = text
+      .replace(/^(?:切换到?|切到|打开|进入|返回到?|返回|回到)/, "")
+      .replace(/(?:界面|页面|模式)$/, "");
+    const mode = MODE_ALIASES.get(key);
+    return mode ? { type: "switch-mode", mode, signature: `switch-mode-${mode}` } : null;
+  }
+
+  function parseRateCommand(text) {
+    const match = text.match(/伴奏(?:速率|速度|倍率|倍速)([零〇一二两三四五六七八九十点\d.]+)/)
       || text.match(/([零〇一二两三四五六七八九十点\d.]+)倍速伴奏/)
       || text.match(/伴奏([零〇一二两三四五六七八九十点\d.]+)倍速/);
-    if (rateMatch) {
-      const rate = spokenRate(rateMatch[1]);
-      return { type: "backing-rate", rate, signature: `backing-rate-${rate}` };
+    if (!match) return null;
+    const rate = spokenRate(match[1]);
+    return { type: "backing-rate", rate, signature: `backing-rate-${rate}` };
+  }
+
+  function parseSeekCommand(text) {
+    const match = text.match(/(快进|前进|后退|快退)([零〇一二两三四五六七八九十\d]+)秒/);
+    if (!match) return null;
+    const seconds = chineseNumber(match[2]);
+    const direction = /快进|前进/.test(match[1]) ? 1 : -1;
+    return { type: "seek-backing", seconds: direction * seconds, signature: `seek-backing-${direction * seconds}` };
+  }
+
+  function parseMeasureCommand(text) {
+    const match = text.match(/第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节/);
+    if (!match) return null;
+    const number = chineseNumber(match[1]);
+    return { type: "measure", number, signature: `measure-${number}` };
+  }
+
+  function parseCommand(value) {
+    const text = commandKey(value);
+    const modeCommand = parseModeCommand(text);
+    if (modeCommand) return modeCommand;
+    const aliasType = COMMAND_ALIASES.get(text);
+    if (aliasType) return { type: aliasType, signature: aliasType };
+    const patternRule = COMMAND_PATTERNS.find((rule) => rule.pattern.test(text));
+    if (patternRule) return { type: patternRule.type, signature: patternRule.type };
+    for (const parser of [parseRateCommand, parseSeekCommand, parseMeasureCommand]) {
+      const command = parser(text);
+      if (command) return command;
     }
-    const seekMatch = text.match(/(快进|前进|后退|快退)([零〇一二两三四五六七八九十\d]+)秒/);
-    if (seekMatch) {
-      const seconds = chineseNumber(seekMatch[2]);
-      const direction = /快进|前进/.test(seekMatch[1]) ? 1 : -1;
-      return { type: "seek-backing", seconds: direction * seconds, signature: `seek-backing-${direction * seconds}` };
-    }
-    if (/(暂停|停止|关闭|关掉)(一下)?伴奏/.test(text)) return { type: "pause-backing", signature: "pause-backing" };
-    if (/(播放|开始|打开)(一下)?伴奏|^伴奏$/.test(text)) return { type: "play-backing", signature: "play-backing" };
-    if (/(暂停|停止)(一下)?(教学)?视频|^(暂停|暂停播放|停止播放)$/.test(text)) return { type: "pause-video", signature: "pause-video" };
-    if (/(关闭|关掉|退出)(一下)?(教学)?视频/.test(text)) return { type: "close-video", signature: "close-video" };
-    if (/(播放|打开|观看|继续播放|恢复播放)(一下)?(教学)?视频|^(教学)?视频$|^(继续播放|恢复播放|播放)$/.test(text)) return { type: "play-video", signature: "play-video" };
-    if (/下一(页|行)|往后|向后|翻后/.test(text)) return { type: "next", signature: "next" };
-    if (/上一(页|行)|往前|向前|翻前/.test(text)) return { type: "prev", signature: "prev" };
     return null;
   }
 
+  const COMMAND_HANDLERS = new Map([
+    ["switch-mode", (command) => window.DrumPracticeVoice.switchMode(command.mode)],
+    ["play-backing", () => window.DrumPracticeVoice.playBacking()],
+    ["pause-backing", () => window.DrumPracticeVoice.pauseBacking()],
+    ["backing-rate", (command) => window.DrumPracticeVoice.setBackingRate(command.rate)],
+    ["seek-backing", (command) => window.DrumPracticeVoice.seekBacking(command.seconds)],
+    ["pause-video", () => window.DrumPracticeVoice.pauseVideo()],
+    ["close-video", () => window.DrumPracticeVoice.closeVideo()],
+    ["play-video", () => window.DrumPracticeVoice.playVideo()],
+    ["measure", (command) => window.DrumPracticeVoice.goToMeasure(command.number)],
+    ["next-measure", () => window.DrumPracticeVoice.isVideoOpen() ? window.DrumPracticeVoice.nextVideo() : window.DrumPracticeVoice.nextMeasure()],
+    ["prev-measure", () => window.DrumPracticeVoice.isVideoOpen() ? window.DrumPracticeVoice.prevVideo() : window.DrumPracticeVoice.prevMeasure()],
+    ["next", () => window.DrumPracticeVoice.nextLine()],
+    ["prev", () => window.DrumPracticeVoice.prevLine()]
+  ]);
+
   function execute(command) {
-    const mode = window.DrumPracticeVoice.getMode();
-    if (command.type === "play-backing") return window.DrumPracticeVoice.playBacking();
-    if (command.type === "pause-backing") return window.DrumPracticeVoice.pauseBacking();
-    if (command.type === "backing-rate") return window.DrumPracticeVoice.setBackingRate(command.rate);
-    if (command.type === "seek-backing") return window.DrumPracticeVoice.seekBacking(command.seconds);
-    if (command.type === "pause-video") return window.DrumPracticeVoice.pauseVideo();
-    if (command.type === "close-video") return window.DrumPracticeVoice.closeVideo();
-    if (command.type === "play-video") return window.DrumPracticeVoice.playVideo();
-    if (window.DrumPracticeVoice.isVideoOpen() && command.type === "next-measure") return window.DrumPracticeVoice.nextVideo();
-    if (window.DrumPracticeVoice.isVideoOpen() && command.type === "prev-measure") return window.DrumPracticeVoice.prevVideo();
-    if (mode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
-    if (mode === "full" && ["next", "prev"].includes(command.type)) {
-      return { ok: false, message: "完整谱面不执行上一行或下一行" };
-    }
-    if (command.type === "measure") return window.DrumPracticeVoice.goToMeasure(command.number);
-    if (command.type === "next-measure") return window.DrumPracticeVoice.nextMeasure();
-    if (command.type === "prev-measure") return window.DrumPracticeVoice.prevMeasure();
-    if (command.type === "next") return window.DrumPracticeVoice.nextLine();
-    return window.DrumPracticeVoice.prevLine();
+    const handler = COMMAND_HANDLERS.get(command.type);
+    return handler ? handler(command) : { ok: false, message: "暂不支持这个语音指令" };
   }
 
   function setStatus(message) {
