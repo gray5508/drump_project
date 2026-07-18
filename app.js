@@ -16,6 +16,7 @@
   const DEFAULT_SIZE_KEY = "drum-focus-default-card-height";
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
   const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
+  const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
   const VIDEO_LIBRARY = {
@@ -73,6 +74,10 @@
   const videoTitle = document.getElementById("videoTitle");
   const videoClips = document.getElementById("videoClips");
   const videoToast = document.getElementById("videoToast");
+  const videoScoreTitle = document.getElementById("videoScoreTitle");
+  const videoScoreStage = document.getElementById("videoScoreStage");
+  const videoScoreScaleInput = document.getElementById("videoScoreScale");
+  const videoScoreScaleValue = document.getElementById("videoScoreScaleValue");
   const backingPlayer = document.getElementById("backingPlayer");
   const backingAudio = document.getElementById("backingAudio");
   const backingDisc = document.getElementById("backingDisc");
@@ -94,6 +99,7 @@
   let activeTutorialClips = [];
   let activeTutorialId = null;
   let activeTutorialClipIndex = -1;
+  let videoScoreScale = Number(readStorage(VIDEO_SCORE_SCALE_KEY, 1)) || 1;
   let videoToastTimer = null;
 
   function readStorage(key, fallback) {
@@ -350,6 +356,22 @@
     if (playRequest) playRequest.catch(() => { /* Controls remain available when autoplay is blocked. */ });
   }
 
+  function syncVideoScoreScale(value = videoScoreScale) {
+    videoScoreScale = Math.max(0.6, Math.min(1.8, Math.round(Number(value) * 10) / 10));
+    videoScoreScaleInput.value = String(videoScoreScale);
+    videoScoreScaleValue.textContent = `${Math.round(videoScoreScale * 100)}%`;
+    videoScoreStage.style.setProperty("--video-score-scale", videoScoreScale);
+    writeStorage(VIDEO_SCORE_SCALE_KEY, videoScoreScale);
+  }
+
+  function renderTutorialScore(measure) {
+    videoScoreTitle.textContent = `第 ${measure.label} 小节谱面`;
+    videoScoreStage.innerHTML = "";
+    const canvas = addMeasureCanvas(videoScoreStage, measure);
+    canvas.classList.add("video-score-canvas");
+    syncVideoScoreScale();
+  }
+
   function openTutorial(id, initialClipIndex = 0) {
     const measure = measureMap.get(id);
     activeTutorialClips = tutorialClipsFor(id);
@@ -359,6 +381,7 @@
     }
     activeTutorialId = id;
     videoTitle.textContent = `第 ${measure.label} 小节 · 教学视频`;
+    renderTutorialScore(measure);
     videoClips.innerHTML = "";
     activeTutorialClips.forEach((clip, index) => {
       const button = document.createElement("button");
@@ -513,6 +536,7 @@
     if (scoreSourceImage.complete) draw();
     else scoreSourceImage.addEventListener("load", draw, { once: true });
     container.appendChild(canvas);
+    return canvas;
   }
 
   function lineLabel(measures) {
@@ -1198,6 +1222,7 @@
   backingToggle.addEventListener("click", toggleBacking);
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
+  videoScoreScaleInput.addEventListener("input", () => syncVideoScoreScale(videoScoreScaleInput.value));
   backingAudio.addEventListener("play", syncBackingPlayer);
   backingAudio.addEventListener("pause", syncBackingPlayer);
   backingAudio.addEventListener("ended", syncBackingPlayer);
@@ -1218,6 +1243,7 @@
 
   buildPalette();
   setBackingRate(readStorage(BACKING_RATE_KEY, 1));
+  syncVideoScoreScale(videoScoreScale);
   syncTemplateControl();
   buildFullScore();
   updatePageScale();
