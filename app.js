@@ -1106,8 +1106,18 @@
     window.dispatchEvent(new CustomEvent("practice-modechange", { detail: { mode } }));
   }
 
+  function voiceSwitchMode(mode) {
+    const names = { full: "完整谱面", line: "按行练习", arrange: "小节编排" };
+    if (!names[mode]) return { ok: false, message: "没有找到对应的练习界面" };
+    if (videoDialog.open) closeTutorial();
+    if (currentMode === mode) return { ok: true, message: `当前已经是${names[mode]}界面` };
+    setMode(mode);
+    return { ok: true, message: `已切换到${names[mode]}界面` };
+  }
+
   window.DrumPracticeVoice = {
     getMode: () => currentMode,
+    switchMode: voiceSwitchMode,
     goToMeasure: voiceGoToMeasure,
     nextMeasure: () => voiceMoveMeasure(1),
     prevMeasure: () => voiceMoveMeasure(-1),
