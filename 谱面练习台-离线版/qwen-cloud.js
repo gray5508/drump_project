@@ -10,6 +10,8 @@
   const voiceActivity = document.getElementById("voiceActivity");
   const voiceActivityText = document.getElementById("voiceActivityText");
   const voiceRecognitionResult = document.getElementById("voiceRecognitionResult");
+  const videoVoiceActivity = document.getElementById("videoVoiceActivity");
+  const videoVoiceActivityText = document.getElementById("videoVoiceActivityText");
   const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, onCommand: handleCommandTriggered });
   let socket = null;
   let stream = null;
@@ -50,6 +52,11 @@
     voiceActivity.classList.toggle("active", active);
     voiceActivity.setAttribute("aria-hidden", String(!active));
     if (voiceActivityText && message) voiceActivityText.textContent = message;
+    if (videoVoiceActivity) {
+      videoVoiceActivity.classList.toggle("active", active);
+      videoVoiceActivity.setAttribute("aria-hidden", String(!active));
+    }
+    if (videoVoiceActivityText && message) videoVoiceActivityText.textContent = message;
     if (!active) {
       voiceActivity.classList.remove("renewed");
       hideVoiceRecognitionResult();
@@ -61,6 +68,11 @@
     voiceActivity.classList.remove("renewed");
     void voiceActivity.offsetWidth;
     voiceActivity.classList.add("renewed");
+    if (videoVoiceActivity) {
+      videoVoiceActivity.classList.remove("renewed");
+      void videoVoiceActivity.offsetWidth;
+      videoVoiceActivity.classList.add("renewed");
+    }
   }
 
   function armCommandWindow() {
