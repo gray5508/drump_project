@@ -43,8 +43,8 @@
     // Directional commands must be matched before numeric measure commands:
     // “下一小节” and “上一小节” both contain “一小节” and were previously
     // mistaken for “第一小节”.
-    if (/下一(个)?(小节|节)|往后(一|1)(个)?(小节|节)/.test(text)) return { type: "next-measure", signature: "next-measure" };
-    if (/上一(个)?(小节|节)|往前(一|1)(个)?(小节|节)/.test(text)) return { type: "prev-measure", signature: "prev-measure" };
+    if (/下一(个)?(小节|节|视频|片段)|^下一个$|往后(一|1)(个)?(小节|节|视频|片段)/.test(text)) return { type: "next-measure", signature: "next-measure" };
+    if (/上一(个)?(小节|节|视频|片段)|^上一个$|往前(一|1)(个)?(小节|节|视频|片段)/.test(text)) return { type: "prev-measure", signature: "prev-measure" };
     const measureMatch = text.match(/第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节/);
     if (measureMatch) {
       const number = chineseNumber(measureMatch[1]);
@@ -65,8 +65,9 @@
     }
     if (/(暂停|停止|关闭|关掉)(一下)?伴奏/.test(text)) return { type: "pause-backing", signature: "pause-backing" };
     if (/(播放|开始|打开)(一下)?伴奏|^伴奏$/.test(text)) return { type: "play-backing", signature: "play-backing" };
+    if (/(暂停|停止)(一下)?(教学)?视频|^(暂停|暂停播放|停止播放)$/.test(text)) return { type: "pause-video", signature: "pause-video" };
     if (/(关闭|关掉|退出)(一下)?(教学)?视频/.test(text)) return { type: "close-video", signature: "close-video" };
-    if (/(播放|打开|观看)(一下)?(教学)?视频|^(教学)?视频$/.test(text)) return { type: "play-video", signature: "play-video" };
+    if (/(播放|打开|观看|继续播放|恢复播放)(一下)?(教学)?视频|^(教学)?视频$|^(继续播放|恢复播放|播放)$/.test(text)) return { type: "play-video", signature: "play-video" };
     if (/下一(页|行)|往后|向后|翻后/.test(text)) return { type: "next", signature: "next" };
     if (/上一(页|行)|往前|向前|翻前/.test(text)) return { type: "prev", signature: "prev" };
     return null;
@@ -78,7 +79,11 @@
     if (command.type === "pause-backing") return window.DrumPracticeVoice.pauseBacking();
     if (command.type === "backing-rate") return window.DrumPracticeVoice.setBackingRate(command.rate);
     if (command.type === "seek-backing") return window.DrumPracticeVoice.seekBacking(command.seconds);
+    if (command.type === "pause-video") return window.DrumPracticeVoice.pauseVideo();
     if (command.type === "close-video") return window.DrumPracticeVoice.closeVideo();
+    if (command.type === "play-video") return window.DrumPracticeVoice.playVideo();
+    if (window.DrumPracticeVoice.isVideoOpen() && command.type === "next-measure") return window.DrumPracticeVoice.nextVideo();
+    if (window.DrumPracticeVoice.isVideoOpen() && command.type === "prev-measure") return window.DrumPracticeVoice.prevVideo();
     if (mode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
     if (mode === "full" && ["next", "prev"].includes(command.type)) {
       return { ok: false, message: "完整谱面不执行上一行或下一行" };
@@ -86,7 +91,6 @@
     if (command.type === "measure") return window.DrumPracticeVoice.goToMeasure(command.number);
     if (command.type === "next-measure") return window.DrumPracticeVoice.nextMeasure();
     if (command.type === "prev-measure") return window.DrumPracticeVoice.prevMeasure();
-    if (command.type === "play-video") return window.DrumPracticeVoice.playVideo();
     if (command.type === "next") return window.DrumPracticeVoice.nextLine();
     return window.DrumPracticeVoice.prevLine();
   }
