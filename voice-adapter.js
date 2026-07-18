@@ -40,12 +40,17 @@
 
   function parseCommand(value) {
     const text = normalizeSpeechText(value);
+    // Directional commands must be matched before numeric measure commands:
+    // “下一小节” and “上一小节” both contain “一小节” and were previously
+    // mistaken for “第一小节”.
+    if (/下一(个)?(小节|节)|往后(一|1)(个)?(小节|节)/.test(text)) return { type: "next-measure", signature: "next-measure" };
+    if (/上一(个)?(小节|节)|往前(一|1)(个)?(小节|节)/.test(text)) return { type: "prev-measure", signature: "prev-measure" };
     const measureMatch = text.match(/第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节/);
     if (measureMatch) {
       const number = chineseNumber(measureMatch[1]);
       return { type: "measure", number, signature: `measure-${number}` };
     }
-    const rateMatch = text.match(/伴奏(?:速率|速度)([零〇一二两三四五六七八九十点\d.]+)/)
+    const rateMatch = text.match(/伴奏(?:速率|速度|倍率|倍速)([零〇一二两三四五六七八九十点\d.]+)/)
       || text.match(/([零〇一二两三四五六七八九十点\d.]+)倍速伴奏/)
       || text.match(/伴奏([零〇一二两三四五六七八九十点\d.]+)倍速/);
     if (rateMatch) {
@@ -62,8 +67,6 @@
     if (/(播放|开始|打开)(一下)?伴奏|^伴奏$/.test(text)) return { type: "play-backing", signature: "play-backing" };
     if (/(关闭|关掉|退出)(一下)?(教学)?视频/.test(text)) return { type: "close-video", signature: "close-video" };
     if (/(播放|打开|观看)(一下)?(教学)?视频|^(教学)?视频$/.test(text)) return { type: "play-video", signature: "play-video" };
-    if (/下一(个)?(小节|节)|往后(一|1)(个)?(小节|节)/.test(text)) return { type: "next-measure", signature: "next-measure" };
-    if (/上一(个)?(小节|节)|往前(一|1)(个)?(小节|节)/.test(text)) return { type: "prev-measure", signature: "prev-measure" };
     if (/下一(页|行)|往后|向后|翻后/.test(text)) return { type: "next", signature: "next" };
     if (/上一(页|行)|往前|向前|翻前/.test(text)) return { type: "prev", signature: "prev" };
     return null;
@@ -135,7 +138,7 @@
     return { wake, process, reset };
   }
 
-  window.VoicePractice = { normalizeSpeechText, setStatus, createWakeGate };
+  window.VoicePractice = { normalizeSpeechText, parseCommand, setStatus, createWakeGate };
 
   window.addEventListener("practice-modechange", (event) => {
     const mode = event.detail?.mode;
