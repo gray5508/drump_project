@@ -41,9 +41,18 @@
   let zoom = 100;
   let lineIndex = 0;
   let currentMode = "full";
+  const repositoryBackingConfig = window.DRUM_BACKING_CONFIG && typeof window.DRUM_BACKING_CONFIG === "object"
+    ? window.DRUM_BACKING_CONFIG
+    : { version: 1, revision: "", globalRate: 1, segments: {} };
+  const repositoryBackingSegments = repositoryBackingConfig.segments && typeof repositoryBackingConfig.segments === "object"
+    ? repositoryBackingConfig.segments
+    : {};
   let marks = readStorage(MARKS_KEY, {});
   let groups = readStorage(GROUPS_KEY, []);
-  let backingSegments = readStorage(BACKING_SEGMENTS_KEY, {});
+  let backingSegments = readStorage(BACKING_SEGMENTS_KEY, null);
+  if (!backingSegments || typeof backingSegments !== "object" || Array.isArray(backingSegments)) {
+    backingSegments = JSON.parse(JSON.stringify(repositoryBackingSegments));
+  }
   let draftRows = null;
   let draftSizes = {};
   const storedTemplate = readStorage(TEMPLATE_SIZE_KEY, { width: INITIAL_TEMPLATE_WIDTH, height: Number(readStorage(DEFAULT_SIZE_KEY, INITIAL_TEMPLATE_HEIGHT)) || INITIAL_TEMPLATE_HEIGHT });
@@ -116,6 +125,9 @@
   const segmentPlaybackProgress = document.getElementById("segmentPlaybackProgress");
   const segmentPlaybackCurrent = document.getElementById("segmentPlaybackCurrent");
   const segmentPlaybackDuration = document.getElementById("segmentPlaybackDuration");
+  const segmentRate = document.getElementById("segmentRate");
+  const segmentRateValue = document.getElementById("segmentRateValue");
+  const segmentHoldAction = document.getElementById("segmentHoldAction");
   let backingSeeking = false;
   let backingSeekTarget = null;
   let backingHoldTimer = null;
@@ -235,9 +247,12 @@
   function backingSegmentFor(id) {
     const segment = backingSegments[id];
     if (!segment || !Number.isFinite(Number(segment.start))) return null;
+    const storedRate = clampBackingRate(segment.rate);
     return {
       start: Math.max(0, Number(segment.start)),
-      end: Number.isFinite(Number(segment.end)) ? Math.max(0, Number(segment.end)) : null
+      end: segment.end === null || segment.end === "" || !Number.isFinite(Number(segment.end)) ? null : Math.max(0, Number(segment.end)),
+      rate: Number.isFinite(storedRate) ? storedRate : (clampBackingRate(backingAudio.playbackRate) || clampBackingRate(repositoryBackingConfig.globalRate) || 1),
+      holdAction: segment.holdAction === "backing" ? "backing" : "video"
     };
   }
 
@@ -377,19 +392,62 @@
     backingSettingsDialog.showModal();
   }
 
+  function normalizedBackingSegments() {
+    return Object.fromEntries(Object.keys(backingSegments).flatMap((id) => {
+      const segment = backingSegmentFor(id);
+      return segment ? [[id, segment]] : [];
+    }));
+  }
+
+  function exportUnifiedBackingConfig() {
+    const exportedAt = new Date().toISOString();
+    const payload = {
+      version: 1,
+      revision: exportedAt.replace(/[-:.TZ]/g, "").slice(0, 14),
+      exportedAt,
+      globalRate: clampBackingRate(backingAudio.playbackRate) || 1,
+      segments: normalizedBackingSegments()
+    };
+    const source = `(function () {\n  "use strict";\n  window.DRUM_BACKING_CONFIG = ${JSON.stringify(payload, null, 2)};\n})();\n`;
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "backing-config.js";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showVideoToast("统一配置已导出；替换仓库同名文件后即可跨设备读取");
+  }
+
+  function restoreRepositoryBackingConfig() {
+    if (!confirm("恢复仓库统一配置会覆盖这台设备尚未导出的伴奏设置，是否继续？")) return;
+    backingSegments = JSON.parse(JSON.stringify(repositoryBackingSegments));
+    try { localStorage.removeItem(BACKING_SEGMENTS_KEY); } catch (error) { /* Storage may be disabled. */ }
+    const repositoryRate = clampBackingRate(repositoryBackingConfig.globalRate) || 1;
+    setBackingRate(repositoryRate);
+    try { localStorage.removeItem(BACKING_RATE_KEY); } catch (error) { /* Storage may be disabled. */ }
+    refreshBackingSegmentIndicators();
+    const editingId = editingBackingMeasureId;
+    if (measureSegmentDialog.open) measureSegmentDialog.close();
+    if (editingId) openMeasureSegmentEditor(editingId);
+    showVideoToast("已恢复仓库统一配置");
+  }
+
   function segmentFormValues() {
     const duration = backingDurationValue();
     const start = clampBackingTime(segmentStartNumber.value);
     const end = segmentToEnd.checked ? null : clampBackingTime(segmentEndNumber.value, duration);
-    return { start, end };
+    const rate = clampBackingRate(segmentRate.value) || 1;
+    const holdAction = segmentHoldAction.value === "backing" ? "backing" : "video";
+    return { start, end, rate, holdAction };
   }
 
   function updateMeasureSegmentSummary() {
     const duration = backingDurationValue();
-    const { start, end } = segmentFormValues();
+    const { start, end, rate } = segmentFormValues();
     const effectiveEnd = end === null ? duration : end;
     const sourceLength = Math.max(0, effectiveEnd - start);
-    const rate = clampBackingRate(backingAudio.playbackRate) || 1;
     const actualLength = sourceLength / rate;
     segmentSummary.textContent = `原曲区间 ${formatBackingTime(start)}–${end === null ? "结尾" : formatBackingTime(end)} · 当前 ${rate.toFixed(2)}× 预计播放 ${actualLength >= 60 ? formatBackingTime(actualLength) : `${actualLength.toFixed(1)} 秒`}`;
   }
@@ -428,12 +486,16 @@
     const segment = backingSegmentFor(id);
     const start = segment ? segment.start : Math.min(backingAudio.currentTime, duration);
     const end = segment?.end ?? duration;
+    const rate = segment?.rate ?? (clampBackingRate(backingAudio.playbackRate) || 1);
     measureSegmentTitle.textContent = `第 ${measure.label} 小节 · 伴奏时间`;
     [segmentStartRange, segmentEndRange].forEach((input) => { input.max = String(duration); });
     segmentStartNumber.max = String(duration);
     segmentEndNumber.max = String(duration);
     setSegmentStart(start);
     setSegmentEnd(end);
+    segmentRate.value = String(rate);
+    segmentRateValue.textContent = `${rate.toFixed(2)}×`;
+    segmentHoldAction.value = segment?.holdAction || "video";
     segmentToEnd.checked = !segment || segment.end === null;
     syncSegmentEndControls();
     document.getElementById("deleteMeasureSegment").hidden = !segment;
@@ -450,13 +512,14 @@
     if (!duration) return { ok: false, message: "伴奏仍在加载，请稍后再试" };
     const start = Math.min(segment.start, duration);
     const end = segment.end === null ? null : Math.max(start, Math.min(segment.end, duration));
+    setBackingRate(segment.rate);
     backingAudio.currentTime = start;
     activeBackingSegmentId = id;
     activeBackingSegmentEnd = end;
     playBacking({ keepSegment: true });
     const range = backingSegmentLabel({ start, end });
     showVideoToast(`第 ${measure.label} 小节伴奏 · ${range}`);
-    return { ok: true, message: `正在播放第 ${measure.label} 小节伴奏，${range}` };
+    return { ok: true, message: `正在以 ${segment.rate.toFixed(2)} 倍速播放第 ${measure.label} 小节伴奏，${range}` };
   }
 
   function voicePlayBackingMeasure(number) {
@@ -632,8 +695,8 @@
     const clips = tutorialClipsFor(id);
     if (clips.length) {
       element.classList.add("has-tutorial");
-      element.title = `${element.title ? `${element.title} · ` : ""}长按查看教学视频`;
     }
+    element.title = `${element.title ? `${element.title} · ` : ""}长按执行已设置动作（默认教学视频）`;
     let holdTimer = null;
     let suppressClickUntil = 0;
     let startX = 0;
@@ -656,7 +719,13 @@
         suppressClickUntil = Date.now() + 1000;
         element.classList.remove("holding-video");
         if (practiceCard) practiceCard.draggable = true;
-        openTutorial(id);
+        const segment = backingSegmentFor(id);
+        if (segment?.holdAction === "backing") {
+          const result = playBackingSegmentById(id);
+          if (!result.ok) showVideoToast(result.message);
+        } else {
+          openTutorial(id);
+        }
       }, 650);
     });
     element.addEventListener("pointermove", (event) => {
@@ -1470,15 +1539,23 @@
   segmentEndRange.addEventListener("input", () => setSegmentEnd(segmentEndRange.value));
   segmentEndNumber.addEventListener("input", () => setSegmentEnd(segmentEndNumber.value));
   segmentToEnd.addEventListener("change", syncSegmentEndControls);
+  segmentRate.addEventListener("input", () => {
+    const rate = clampBackingRate(segmentRate.value) || 1;
+    segmentRateValue.textContent = `${rate.toFixed(2)}×`;
+    updateMeasureSegmentSummary();
+  });
   document.getElementById("useCurrentAsStart").addEventListener("click", () => setSegmentStart(backingAudio.currentTime));
   document.getElementById("useCurrentAsEnd").addEventListener("click", () => setSegmentEnd(backingAudio.currentTime));
   document.getElementById("closeMeasureSegment").addEventListener("click", () => measureSegmentDialog.close());
   measureSegmentDialog.addEventListener("click", (event) => { if (event.target === measureSegmentDialog) measureSegmentDialog.close(); });
+  document.getElementById("exportBackingConfig").addEventListener("click", exportUnifiedBackingConfig);
+  document.getElementById("restoreRepositoryConfig").addEventListener("click", restoreRepositoryBackingConfig);
   document.getElementById("previewMeasureSegment").addEventListener("click", () => {
     if (!editingBackingMeasureId) return;
-    const { start, end } = segmentFormValues();
+    const { start, end, rate } = segmentFormValues();
     const effectiveEnd = end === null ? backingDurationValue() : end;
     if (effectiveEnd <= start) { showVideoToast("结束时间需要晚于开始时间"); return; }
+    setBackingRate(rate);
     backingAudio.currentTime = start;
     activeBackingSegmentId = editingBackingMeasureId;
     activeBackingSegmentEnd = end;
@@ -1500,10 +1577,10 @@
   measureSegmentForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!editingBackingMeasureId) return;
-    const { start, end } = segmentFormValues();
+    const { start, end, rate, holdAction } = segmentFormValues();
     const effectiveEnd = end === null ? backingDurationValue() : end;
     if (effectiveEnd <= start) { showVideoToast("结束时间需要晚于开始时间"); return; }
-    backingSegments[editingBackingMeasureId] = { start, end };
+    backingSegments[editingBackingMeasureId] = { start, end, rate, holdAction };
     writeStorage(BACKING_SEGMENTS_KEY, backingSegments);
     refreshBackingSegmentIndicators();
     measureSegmentDialog.close();
@@ -1533,7 +1610,7 @@
   });
 
   buildPalette();
-  setBackingRate(readStorage(BACKING_RATE_KEY, 1));
+  setBackingRate(readStorage(BACKING_RATE_KEY, clampBackingRate(repositoryBackingConfig.globalRate) || 1));
   syncVideoScoreScale(videoScoreScale);
   syncTemplateControl();
   buildFullScore();
