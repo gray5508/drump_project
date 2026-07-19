@@ -16,6 +16,7 @@
   const DEFAULT_SIZE_KEY = "drum-focus-default-card-height";
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
   const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
+  const BACKING_SEGMENTS_KEY = "drum-focus-backing-segments-v1";
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
@@ -42,6 +43,7 @@
   let currentMode = "full";
   let marks = readStorage(MARKS_KEY, {});
   let groups = readStorage(GROUPS_KEY, []);
+  let backingSegments = readStorage(BACKING_SEGMENTS_KEY, {});
   let draftRows = null;
   let draftSizes = {};
   const storedTemplate = readStorage(TEMPLATE_SIZE_KEY, { width: INITIAL_TEMPLATE_WIDTH, height: Number(readStorage(DEFAULT_SIZE_KEY, INITIAL_TEMPLATE_HEIGHT)) || INITIAL_TEMPLATE_HEIGHT });
@@ -85,17 +87,44 @@
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
+  const backingSettingsButton = document.getElementById("backingSettingsButton");
+  const backingSettingsDialog = document.getElementById("backingSettingsDialog");
+  const backingSettingsProgress = document.getElementById("backingSettingsProgress");
+  const backingSettingsCurrent = document.getElementById("backingSettingsCurrent");
+  const backingSettingsDuration = document.getElementById("backingSettingsDuration");
+  const backingSettingsEnd = document.getElementById("backingSettingsEnd");
+  const backingQuickFill = document.getElementById("backingQuickFill");
+  const backingQuickTime = document.getElementById("backingQuickTime");
+  const backingQuickDuration = document.getElementById("backingQuickDuration");
+  const backingQuickRate = document.getElementById("backingQuickRate");
   const backingSeekHud = document.getElementById("backingSeekHud");
   const backingSeekTrack = document.getElementById("backingSeekTrack");
   const backingSeekFill = document.getElementById("backingSeekFill");
   const backingSeekThumb = document.getElementById("backingSeekThumb");
   const backingCurrentTime = document.getElementById("backingCurrentTime");
   const backingDuration = document.getElementById("backingDuration");
+  const measureBackingTools = document.getElementById("measureBackingTools");
+  const measureSegmentBrief = document.getElementById("measureSegmentBrief");
+  const measureSegmentDialog = document.getElementById("measureSegmentDialog");
+  const measureSegmentForm = document.getElementById("measureSegmentForm");
+  const measureSegmentTitle = document.getElementById("measureSegmentTitle");
+  const segmentStartRange = document.getElementById("segmentStartRange");
+  const segmentStartNumber = document.getElementById("segmentStartNumber");
+  const segmentEndRange = document.getElementById("segmentEndRange");
+  const segmentEndNumber = document.getElementById("segmentEndNumber");
+  const segmentToEnd = document.getElementById("segmentToEnd");
+  const segmentSummary = document.getElementById("segmentSummary");
   let backingSeeking = false;
   let backingSeekTarget = null;
   let backingHoldTimer = null;
   let backingHoldStart = null;
   let suppressBackingToggleUntil = 0;
+  let activeBackingSegmentId = null;
+  let activeBackingSegmentEnd = null;
+  let editingBackingMeasureId = null;
+  let hoveredBackingMeasureId = null;
+  let measureToolsHideTimer = null;
+  let backingProgressFrame = 0;
   let activeTutorialClips = [];
   let activeTutorialId = null;
   let activeTutorialClipIndex = -1;
@@ -188,14 +217,91 @@
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
+  function backingDurationValue() {
+    return Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+  }
+
+  function clampBackingTime(value, fallback = 0) {
+    const duration = backingDurationValue();
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, Math.round(number * 10) / 10));
+  }
+
+  function measureForNumber(number) {
+    return SCORE_DATA.measures.find((item) => number >= item.measureStart && number <= item.measureEnd);
+  }
+
+  function backingSegmentFor(id) {
+    const segment = backingSegments[id];
+    if (!segment || !Number.isFinite(Number(segment.start))) return null;
+    return {
+      start: Math.max(0, Number(segment.start)),
+      end: Number.isFinite(Number(segment.end)) ? Math.max(0, Number(segment.end)) : null
+    };
+  }
+
+  function backingSegmentLabel(segment) {
+    if (!segment) return "尚未设置";
+    return `${formatBackingTime(segment.start)}–${segment.end === null ? "结尾" : formatBackingTime(segment.end)}`;
+  }
+
+  function refreshBackingSegmentIndicators() {
+    document.querySelectorAll(".measure[data-id],.line-measure[data-id],.mini-crop[data-backing-id]").forEach((element) => {
+      const id = element.dataset.id || element.dataset.backingId;
+      element.classList.toggle("has-backing-segment", Boolean(backingSegmentFor(id)));
+    });
+    if (hoveredBackingMeasureId) measureSegmentBrief.textContent = backingSegmentLabel(backingSegmentFor(hoveredBackingMeasureId));
+  }
+
+  function hideMeasureBackingTools(delay = 0) {
+    clearTimeout(measureToolsHideTimer);
+    measureToolsHideTimer = setTimeout(() => {
+      measureBackingTools.classList.remove("show");
+      measureBackingTools.setAttribute("aria-hidden", "true");
+    }, delay);
+  }
+
+  function showMeasureBackingTools(element, id) {
+    clearTimeout(measureToolsHideTimer);
+    hoveredBackingMeasureId = id;
+    measureSegmentBrief.textContent = backingSegmentLabel(backingSegmentFor(id));
+    measureBackingTools.classList.add("show");
+    measureBackingTools.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => {
+      const rect = element.getBoundingClientRect();
+      const toolsRect = measureBackingTools.getBoundingClientRect();
+      const left = Math.max(8, Math.min(window.innerWidth - toolsRect.width - 8, rect.left + rect.width / 2 - toolsRect.width / 2));
+      const preferredTop = rect.top - toolsRect.height - 6;
+      const top = preferredTop >= 8 ? preferredTop : Math.min(window.innerHeight - toolsRect.height - 8, rect.bottom + 6);
+      measureBackingTools.style.left = `${Math.round(left)}px`;
+      measureBackingTools.style.top = `${Math.round(top)}px`;
+    });
+  }
+
+  function attachMeasureBackingTools(element, id) {
+    element.addEventListener("pointerenter", () => showMeasureBackingTools(element, id));
+    element.addEventListener("pointerleave", () => hideMeasureBackingTools(220));
+    element.addEventListener("focus", () => showMeasureBackingTools(element, id));
+    element.addEventListener("blur", () => hideMeasureBackingTools(220));
+  }
+
   function syncBackingProgress() {
-    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    const duration = backingDurationValue();
     const displayedTime = backingSeeking && Number.isFinite(backingSeekTarget) ? backingSeekTarget : backingAudio.currentTime;
     const fraction = duration ? Math.max(0, Math.min(1, displayedTime / duration)) : 0;
     backingSeekFill.style.width = `${fraction * 100}%`;
     backingSeekThumb.style.left = `${fraction * 100}%`;
     backingCurrentTime.textContent = formatBackingTime(displayedTime);
     backingDuration.textContent = formatBackingTime(duration);
+    backingQuickFill.style.width = `${fraction * 100}%`;
+    backingQuickTime.textContent = formatBackingTime(displayedTime);
+    backingQuickDuration.textContent = formatBackingTime(duration);
+    backingSettingsProgress.max = String(duration || 100);
+    if (!backingSettingsProgress.matches(":active")) backingSettingsProgress.value = String(displayedTime);
+    backingSettingsCurrent.textContent = formatBackingTime(displayedTime);
+    backingSettingsDuration.textContent = formatBackingTime(duration);
+    backingSettingsEnd.textContent = formatBackingTime(duration);
   }
 
   function syncBackingPlayer() {
@@ -206,6 +312,15 @@
     backingToggle.textContent = playing ? "暂停" : "播放";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
     backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
+    cancelAnimationFrame(backingProgressFrame);
+    if (playing) {
+      const animateProgress = () => {
+        stopBackingSegmentAtBoundary();
+        syncBackingProgress();
+        if (!backingAudio.paused && !backingAudio.ended) backingProgressFrame = requestAnimationFrame(animateProgress);
+      };
+      backingProgressFrame = requestAnimationFrame(animateProgress);
+    }
     syncBackingProgress();
   }
 
@@ -218,13 +333,19 @@
     if ("webkitPreservesPitch" in backingAudio) backingAudio.webkitPreservesPitch = true;
     backingRate.value = String(rate);
     backingRateValue.textContent = `${rate.toFixed(2)}×`;
+    backingQuickRate.textContent = `${rate.toFixed(2)}×`;
     writeStorage(BACKING_RATE_KEY, rate);
     syncBackingPlayer();
+    if (measureSegmentDialog.open) updateMeasureSegmentSummary();
     if (notify) showVideoToast(`伴奏速率已调整为 ${rate.toFixed(2)} 倍`);
     return { ok: true, message: `伴奏速率已调整为 ${rate.toFixed(2)} 倍` };
   }
 
-  function playBacking() {
+  function playBacking(options = {}) {
+    if (!options.keepSegment) {
+      activeBackingSegmentId = null;
+      activeBackingSegmentEnd = null;
+    }
     const request = backingAudio.play();
     if (request) request.catch(() => {
       syncBackingPlayer();
@@ -242,9 +363,11 @@
   function seekBacking(seconds) {
     const amount = Number(seconds);
     if (!Number.isFinite(amount) || amount === 0) return { ok: false, message: "没有识别到有效的快进或后退时间" };
-    const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
+    const duration = backingDurationValue();
     if (!duration) return { ok: false, message: "伴奏仍在加载，请稍后再试" };
     const target = Math.max(0, Math.min(duration, backingAudio.currentTime + amount));
+    activeBackingSegmentId = null;
+    activeBackingSegmentEnd = null;
     backingAudio.currentTime = target;
     syncBackingProgress();
     const action = amount > 0 ? "快进" : "后退";
@@ -256,6 +379,119 @@
   function toggleBacking() {
     if (backingAudio.paused) playBacking();
     else pauseBacking();
+  }
+
+  function setBackingPosition(value) {
+    const duration = backingDurationValue();
+    if (!duration) return false;
+    activeBackingSegmentId = null;
+    activeBackingSegmentEnd = null;
+    backingAudio.currentTime = Math.max(0, Math.min(duration, Number(value) || 0));
+    syncBackingProgress();
+    return true;
+  }
+
+  function openBackingSettings() {
+    syncBackingProgress();
+    backingSettingsDialog.showModal();
+  }
+
+  function segmentFormValues() {
+    const duration = backingDurationValue();
+    const start = clampBackingTime(segmentStartNumber.value);
+    const end = segmentToEnd.checked ? null : clampBackingTime(segmentEndNumber.value, duration);
+    return { start, end };
+  }
+
+  function updateMeasureSegmentSummary() {
+    const duration = backingDurationValue();
+    const { start, end } = segmentFormValues();
+    const effectiveEnd = end === null ? duration : end;
+    const sourceLength = Math.max(0, effectiveEnd - start);
+    const rate = clampBackingRate(backingAudio.playbackRate) || 1;
+    const actualLength = sourceLength / rate;
+    segmentSummary.textContent = `原曲区间 ${formatBackingTime(start)}–${end === null ? "结尾" : formatBackingTime(end)} · 当前 ${rate.toFixed(2)}× 预计播放 ${actualLength >= 60 ? formatBackingTime(actualLength) : `${actualLength.toFixed(1)} 秒`}`;
+  }
+
+  function syncSegmentEndControls() {
+    const disabled = segmentToEnd.checked;
+    segmentEndRange.disabled = disabled;
+    segmentEndNumber.disabled = disabled;
+    document.getElementById("useCurrentAsEnd").disabled = disabled;
+    updateMeasureSegmentSummary();
+  }
+
+  function setSegmentStart(value) {
+    const start = clampBackingTime(value);
+    segmentStartRange.value = String(start);
+    segmentStartNumber.value = String(start);
+    updateMeasureSegmentSummary();
+  }
+
+  function setSegmentEnd(value) {
+    const end = clampBackingTime(value, backingDurationValue());
+    segmentEndRange.value = String(end);
+    segmentEndNumber.value = String(end);
+    updateMeasureSegmentSummary();
+  }
+
+  function openMeasureSegmentEditor(id) {
+    const measure = measureMap.get(id);
+    const duration = backingDurationValue();
+    if (!measure) return;
+    if (!duration) {
+      showVideoToast("伴奏仍在加载，请稍后再设置时间");
+      return;
+    }
+    editingBackingMeasureId = id;
+    const segment = backingSegmentFor(id);
+    const start = segment ? segment.start : Math.min(backingAudio.currentTime, duration);
+    const end = segment?.end ?? duration;
+    measureSegmentTitle.textContent = `第 ${measure.label} 小节 · 伴奏时间`;
+    [segmentStartRange, segmentEndRange].forEach((input) => { input.max = String(duration); });
+    segmentStartNumber.max = String(duration);
+    segmentEndNumber.max = String(duration);
+    setSegmentStart(start);
+    setSegmentEnd(end);
+    segmentToEnd.checked = !segment || segment.end === null;
+    syncSegmentEndControls();
+    document.getElementById("deleteMeasureSegment").hidden = !segment;
+    hideMeasureBackingTools();
+    measureSegmentDialog.showModal();
+  }
+
+  function playBackingSegmentById(id) {
+    const measure = measureMap.get(id);
+    const segment = backingSegmentFor(id);
+    const duration = backingDurationValue();
+    if (!measure) return { ok: false, message: "没有找到对应的小节" };
+    if (!segment) return { ok: false, message: `第 ${measure.label} 小节还没有设置伴奏时间` };
+    if (!duration) return { ok: false, message: "伴奏仍在加载，请稍后再试" };
+    const start = Math.min(segment.start, duration);
+    const end = segment.end === null ? null : Math.max(start, Math.min(segment.end, duration));
+    backingAudio.currentTime = start;
+    activeBackingSegmentId = id;
+    activeBackingSegmentEnd = end;
+    playBacking({ keepSegment: true });
+    const range = backingSegmentLabel({ start, end });
+    showVideoToast(`第 ${measure.label} 小节伴奏 · ${range}`);
+    return { ok: true, message: `正在播放第 ${measure.label} 小节伴奏，${range}` };
+  }
+
+  function voicePlayBackingMeasure(number) {
+    const measure = measureForNumber(Number(number));
+    if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
+    return playBackingSegmentById(measure.id);
+  }
+
+  function stopBackingSegmentAtBoundary() {
+    if (!activeBackingSegmentId || !Number.isFinite(activeBackingSegmentEnd)) return;
+    if (backingAudio.currentTime + 0.035 < activeBackingSegmentEnd) return;
+    backingAudio.pause();
+    backingAudio.currentTime = activeBackingSegmentEnd;
+    activeBackingSegmentId = null;
+    activeBackingSegmentEnd = null;
+    syncBackingProgress();
   }
 
   function openBackingSeek() {
@@ -290,7 +526,7 @@
 
   function startBackingHold(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (event.target.closest("input,.backing-action")) return;
+    if (event.target.closest("input,.backing-action,.backing-settings-button,.backing-quick-preview")) return;
     cancelBackingHold();
     const captureTarget = event.target instanceof Element ? event.target : backingPlayer;
     backingHoldStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, captureTarget, active: false, startFraction: 0 };
@@ -471,6 +707,8 @@
     button.innerHTML = `<span class="measure-label">${measure.label}</span>`;
     button.addEventListener("click", () => toggleMark(measure.id));
     attachTutorialLongPress(button, measure.id);
+    attachMeasureBackingTools(button, measure.id);
+    button.classList.toggle("has-backing-segment", Boolean(backingSegmentFor(measure.id)));
     setMarkedStyle(button, measure.id);
     return button;
   }
@@ -717,6 +955,8 @@
     head.querySelector('[data-action="remove"]').addEventListener("click", () => removeDraftItem(id));
     const crop = document.createElement("div");
     crop.className = "mini-crop";
+    crop.dataset.backingId = id;
+    crop.classList.toggle("has-backing-segment", Boolean(backingSegmentFor(id)));
     const customSize = customSizeFor(id);
     if (customSize.height) crop.style.setProperty("--card-height", `${customSize.height}px`);
     addMeasureCanvas(crop, measure);
@@ -807,6 +1047,7 @@
     });
     card.append(head, crop, leftZone, rightZone, ...cardResizeHandles);
     attachTutorialLongPress(crop, id);
+    attachMeasureBackingTools(crop, id);
     card.addEventListener("dragstart", () => {
       draggedId = id;
       card.classList.add("dragging");
@@ -1132,7 +1373,8 @@
     playBacking,
     pauseBacking,
     setBackingRate,
-    seekBacking
+    seekBacking,
+    playBackingMeasure: voicePlayBackingMeasure
   };
 
   function updatePageScale() {
@@ -1230,23 +1472,87 @@
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
+  backingSettingsButton.addEventListener("click", openBackingSettings);
+  document.getElementById("closeBackingSettings").addEventListener("click", () => backingSettingsDialog.close());
+  backingSettingsDialog.addEventListener("click", (event) => { if (event.target === backingSettingsDialog) backingSettingsDialog.close(); });
+  backingSettingsProgress.addEventListener("input", () => setBackingPosition(backingSettingsProgress.value));
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
+  measureBackingTools.addEventListener("pointerenter", () => clearTimeout(measureToolsHideTimer));
+  measureBackingTools.addEventListener("pointerleave", () => hideMeasureBackingTools(180));
+  document.getElementById("playMeasureSegment").addEventListener("click", () => {
+    const result = playBackingSegmentById(hoveredBackingMeasureId);
+    if (!result.ok) {
+      showVideoToast(result.message);
+      if (hoveredBackingMeasureId && !backingSegmentFor(hoveredBackingMeasureId)) openMeasureSegmentEditor(hoveredBackingMeasureId);
+    }
+    hideMeasureBackingTools();
+  });
+  document.getElementById("editMeasureSegment").addEventListener("click", () => openMeasureSegmentEditor(hoveredBackingMeasureId));
+  window.addEventListener("scroll", () => hideMeasureBackingTools(), true);
+  segmentStartRange.addEventListener("input", () => setSegmentStart(segmentStartRange.value));
+  segmentStartNumber.addEventListener("input", () => setSegmentStart(segmentStartNumber.value));
+  segmentEndRange.addEventListener("input", () => setSegmentEnd(segmentEndRange.value));
+  segmentEndNumber.addEventListener("input", () => setSegmentEnd(segmentEndNumber.value));
+  segmentToEnd.addEventListener("change", syncSegmentEndControls);
+  document.getElementById("useCurrentAsStart").addEventListener("click", () => setSegmentStart(backingAudio.currentTime));
+  document.getElementById("useCurrentAsEnd").addEventListener("click", () => setSegmentEnd(backingAudio.currentTime));
+  document.getElementById("closeMeasureSegment").addEventListener("click", () => measureSegmentDialog.close());
+  measureSegmentDialog.addEventListener("click", (event) => { if (event.target === measureSegmentDialog) measureSegmentDialog.close(); });
+  document.getElementById("previewMeasureSegment").addEventListener("click", () => {
+    if (!editingBackingMeasureId) return;
+    const { start, end } = segmentFormValues();
+    const effectiveEnd = end === null ? backingDurationValue() : end;
+    if (effectiveEnd <= start) { showVideoToast("结束时间需要晚于开始时间"); return; }
+    backingAudio.currentTime = start;
+    activeBackingSegmentId = editingBackingMeasureId;
+    activeBackingSegmentEnd = end;
+    playBacking({ keepSegment: true });
+    showVideoToast("正在试听当前设置");
+  });
+  document.getElementById("deleteMeasureSegment").addEventListener("click", () => {
+    if (!editingBackingMeasureId) return;
+    delete backingSegments[editingBackingMeasureId];
+    writeStorage(BACKING_SEGMENTS_KEY, backingSegments);
+    if (activeBackingSegmentId === editingBackingMeasureId) {
+      activeBackingSegmentId = null;
+      activeBackingSegmentEnd = null;
+    }
+    refreshBackingSegmentIndicators();
+    measureSegmentDialog.close();
+    showVideoToast("已删除这个小节的伴奏时间");
+  });
+  measureSegmentForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!editingBackingMeasureId) return;
+    const { start, end } = segmentFormValues();
+    const effectiveEnd = end === null ? backingDurationValue() : end;
+    if (effectiveEnd <= start) { showVideoToast("结束时间需要晚于开始时间"); return; }
+    backingSegments[editingBackingMeasureId] = { start, end };
+    writeStorage(BACKING_SEGMENTS_KEY, backingSegments);
+    refreshBackingSegmentIndicators();
+    measureSegmentDialog.close();
+    showVideoToast("小节伴奏时间已保存");
+  });
   videoScoreScaleInput.addEventListener("input", () => syncVideoScoreScale(videoScoreScaleInput.value));
   backingAudio.addEventListener("play", syncBackingPlayer);
   backingAudio.addEventListener("pause", syncBackingPlayer);
-  backingAudio.addEventListener("ended", syncBackingPlayer);
+  backingAudio.addEventListener("ended", () => {
+    activeBackingSegmentId = null;
+    activeBackingSegmentEnd = null;
+    syncBackingPlayer();
+  });
   backingAudio.addEventListener("ratechange", syncBackingPlayer);
   backingAudio.addEventListener("loadedmetadata", syncBackingProgress);
   backingAudio.addEventListener("durationchange", syncBackingProgress);
-  backingAudio.addEventListener("timeupdate", syncBackingProgress);
+  backingAudio.addEventListener("timeupdate", () => { stopBackingSegmentAtBoundary(); syncBackingProgress(); });
   backingAudio.addEventListener("error", () => {
     backingStatus.textContent = "伴奏加载失败";
     backingPlayer.classList.remove("playing");
   });
   document.addEventListener("keydown", (event) => {
     if (!document.getElementById("view-line").classList.contains("active")) return;
-    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open || backingHoldStart?.active) return;
+    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) || saveDialog.open || unsavedDialog.open || videoDialog.open || backingSettingsDialog.open || measureSegmentDialog.open || backingHoldStart?.active) return;
     if (event.key === "ArrowLeft" && lineIndex > 0) { event.preventDefault(); lineIndex -= 1; renderLine(); }
     if (event.key === "ArrowRight" && lineIndex < SCORE_DATA.systems - 1) { event.preventDefault(); lineIndex += 1; renderLine(); }
   });
