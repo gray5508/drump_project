@@ -103,6 +103,13 @@
     return { type: "measure", number, signature: `measure-${number}` };
   }
 
+  function parsePlayBackingMeasureCommand(text) {
+    const match = text.match(/^(?:播放|开始播放)(?:伴奏)?第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节(?:伴奏)?$/);
+    if (!match) return null;
+    const number = chineseNumber(match[1]);
+    return { type: "play-backing-measure", number, signature: `play-backing-measure-${number}` };
+  }
+
   function parseCommand(value) {
     const text = commandKey(value);
     const modeCommand = parseModeCommand(text);
@@ -111,7 +118,7 @@
     if (aliasType) return { type: aliasType, signature: aliasType };
     const patternRule = COMMAND_PATTERNS.find((rule) => rule.pattern.test(text));
     if (patternRule) return { type: patternRule.type, signature: patternRule.type };
-    for (const parser of [parseRateCommand, parseSeekCommand, parseMeasureCommand]) {
+    for (const parser of [parseRateCommand, parseSeekCommand, parsePlayBackingMeasureCommand, parseMeasureCommand]) {
       const command = parser(text);
       if (command) return command;
     }
@@ -124,6 +131,7 @@
     ["pause-backing", () => window.DrumPracticeVoice.pauseBacking()],
     ["backing-rate", (command) => window.DrumPracticeVoice.setBackingRate(command.rate)],
     ["seek-backing", (command) => window.DrumPracticeVoice.seekBacking(command.seconds)],
+    ["play-backing-measure", (command) => window.DrumPracticeVoice.playBackingMeasure(command.number)],
     ["pause-video", () => window.DrumPracticeVoice.pauseVideo()],
     ["close-video", () => window.DrumPracticeVoice.closeVideo()],
     ["play-video", () => window.DrumPracticeVoice.playVideo()],
