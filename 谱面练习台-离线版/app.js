@@ -103,8 +103,6 @@
   const backingSeekThumb = document.getElementById("backingSeekThumb");
   const backingCurrentTime = document.getElementById("backingCurrentTime");
   const backingDuration = document.getElementById("backingDuration");
-  const measureBackingTools = document.getElementById("measureBackingTools");
-  const measureSegmentBrief = document.getElementById("measureSegmentBrief");
   const measureSegmentDialog = document.getElementById("measureSegmentDialog");
   const measureSegmentForm = document.getElementById("measureSegmentForm");
   const measureSegmentTitle = document.getElementById("measureSegmentTitle");
@@ -114,6 +112,10 @@
   const segmentEndNumber = document.getElementById("segmentEndNumber");
   const segmentToEnd = document.getElementById("segmentToEnd");
   const segmentSummary = document.getElementById("segmentSummary");
+  const segmentPlaybackToggle = document.getElementById("segmentPlaybackToggle");
+  const segmentPlaybackProgress = document.getElementById("segmentPlaybackProgress");
+  const segmentPlaybackCurrent = document.getElementById("segmentPlaybackCurrent");
+  const segmentPlaybackDuration = document.getElementById("segmentPlaybackDuration");
   let backingSeeking = false;
   let backingSeekTarget = null;
   let backingHoldTimer = null;
@@ -122,8 +124,6 @@
   let activeBackingSegmentId = null;
   let activeBackingSegmentEnd = null;
   let editingBackingMeasureId = null;
-  let hoveredBackingMeasureId = null;
-  let measureToolsHideTimer = null;
   let backingProgressFrame = 0;
   let activeTutorialClips = [];
   let activeTutorialId = null;
@@ -251,39 +251,15 @@
       const id = element.dataset.id || element.dataset.backingId;
       element.classList.toggle("has-backing-segment", Boolean(backingSegmentFor(id)));
     });
-    if (hoveredBackingMeasureId) measureSegmentBrief.textContent = backingSegmentLabel(backingSegmentFor(hoveredBackingMeasureId));
   }
 
-  function hideMeasureBackingTools(delay = 0) {
-    clearTimeout(measureToolsHideTimer);
-    measureToolsHideTimer = setTimeout(() => {
-      measureBackingTools.classList.remove("show");
-      measureBackingTools.setAttribute("aria-hidden", "true");
-    }, delay);
-  }
-
-  function showMeasureBackingTools(element, id) {
-    clearTimeout(measureToolsHideTimer);
-    hoveredBackingMeasureId = id;
-    measureSegmentBrief.textContent = backingSegmentLabel(backingSegmentFor(id));
-    measureBackingTools.classList.add("show");
-    measureBackingTools.setAttribute("aria-hidden", "false");
-    requestAnimationFrame(() => {
-      const rect = element.getBoundingClientRect();
-      const toolsRect = measureBackingTools.getBoundingClientRect();
-      const left = Math.max(8, Math.min(window.innerWidth - toolsRect.width - 8, rect.left + rect.width / 2 - toolsRect.width / 2));
-      const preferredTop = rect.top - toolsRect.height - 6;
-      const top = preferredTop >= 8 ? preferredTop : Math.min(window.innerHeight - toolsRect.height - 8, rect.bottom + 6);
-      measureBackingTools.style.left = `${Math.round(left)}px`;
-      measureBackingTools.style.top = `${Math.round(top)}px`;
+  function attachMeasureBackingEditor(element, id, cancelSingleClick) {
+    element.addEventListener("dblclick", (event) => {
+      if (typeof cancelSingleClick === "function") cancelSingleClick();
+      event.preventDefault();
+      event.stopPropagation();
+      openMeasureSegmentEditor(id);
     });
-  }
-
-  function attachMeasureBackingTools(element, id) {
-    element.addEventListener("pointerenter", () => showMeasureBackingTools(element, id));
-    element.addEventListener("pointerleave", () => hideMeasureBackingTools(220));
-    element.addEventListener("focus", () => showMeasureBackingTools(element, id));
-    element.addEventListener("blur", () => hideMeasureBackingTools(220));
   }
 
   function syncBackingProgress() {
@@ -302,6 +278,10 @@
     backingSettingsCurrent.textContent = formatBackingTime(displayedTime);
     backingSettingsDuration.textContent = formatBackingTime(duration);
     backingSettingsEnd.textContent = formatBackingTime(duration);
+    segmentPlaybackProgress.max = String(duration || 100);
+    if (!segmentPlaybackProgress.matches(":active")) segmentPlaybackProgress.value = String(displayedTime);
+    segmentPlaybackCurrent.textContent = formatBackingTime(displayedTime);
+    segmentPlaybackDuration.textContent = formatBackingTime(duration);
   }
 
   function syncBackingPlayer() {
@@ -310,6 +290,7 @@
     backingPlayer.classList.toggle("playing", playing);
     backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
     backingToggle.textContent = playing ? "暂停" : "播放";
+    segmentPlaybackToggle.textContent = playing ? "暂停伴奏" : "播放伴奏";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
     backingStatus.textContent = `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
     cancelAnimationFrame(backingProgressFrame);
@@ -456,7 +437,7 @@
     segmentToEnd.checked = !segment || segment.end === null;
     syncSegmentEndControls();
     document.getElementById("deleteMeasureSegment").hidden = !segment;
-    hideMeasureBackingTools();
+    syncBackingPlayer();
     measureSegmentDialog.showModal();
   }
 
@@ -702,12 +683,16 @@
     const range = measure.measureStart === measure.measureEnd
       ? `第 ${measure.measureStart} 小节`
       : `第 ${measure.measureStart} 至 ${measure.measureEnd} 小节（多小节休止）`;
-    button.title = range;
-    button.setAttribute("aria-label", `${range}，单击标记`);
+    button.title = `${range}；双击设置伴奏时间`;
+    button.setAttribute("aria-label", `${range}，单击标记，双击设置伴奏时间`);
     button.innerHTML = `<span class="measure-label">${measure.label}</span>`;
-    button.addEventListener("click", () => toggleMark(measure.id));
+    let markClickTimer = null;
+    button.addEventListener("click", () => {
+      clearTimeout(markClickTimer);
+      markClickTimer = setTimeout(() => toggleMark(measure.id), 230);
+    });
     attachTutorialLongPress(button, measure.id);
-    attachMeasureBackingTools(button, measure.id);
+    attachMeasureBackingEditor(button, measure.id, () => clearTimeout(markClickTimer));
     button.classList.toggle("has-backing-segment", Boolean(backingSegmentFor(measure.id)));
     setMarkedStyle(button, measure.id);
     return button;
@@ -1047,7 +1032,7 @@
     });
     card.append(head, crop, leftZone, rightZone, ...cardResizeHandles);
     attachTutorialLongPress(crop, id);
-    attachMeasureBackingTools(crop, id);
+    attachMeasureBackingEditor(crop, id);
     card.addEventListener("dragstart", () => {
       draggedId = id;
       card.classList.add("dragging");
@@ -1478,18 +1463,8 @@
   backingSettingsProgress.addEventListener("input", () => setBackingPosition(backingSettingsProgress.value));
   backingRate.addEventListener("input", () => setBackingRate(backingRate.value));
   backingRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
-  measureBackingTools.addEventListener("pointerenter", () => clearTimeout(measureToolsHideTimer));
-  measureBackingTools.addEventListener("pointerleave", () => hideMeasureBackingTools(180));
-  document.getElementById("playMeasureSegment").addEventListener("click", () => {
-    const result = playBackingSegmentById(hoveredBackingMeasureId);
-    if (!result.ok) {
-      showVideoToast(result.message);
-      if (hoveredBackingMeasureId && !backingSegmentFor(hoveredBackingMeasureId)) openMeasureSegmentEditor(hoveredBackingMeasureId);
-    }
-    hideMeasureBackingTools();
-  });
-  document.getElementById("editMeasureSegment").addEventListener("click", () => openMeasureSegmentEditor(hoveredBackingMeasureId));
-  window.addEventListener("scroll", () => hideMeasureBackingTools(), true);
+  segmentPlaybackToggle.addEventListener("click", toggleBacking);
+  segmentPlaybackProgress.addEventListener("input", () => setBackingPosition(segmentPlaybackProgress.value));
   segmentStartRange.addEventListener("input", () => setSegmentStart(segmentStartRange.value));
   segmentStartNumber.addEventListener("input", () => setSegmentStart(segmentStartNumber.value));
   segmentEndRange.addEventListener("input", () => setSegmentEnd(segmentEndRange.value));
