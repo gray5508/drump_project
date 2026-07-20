@@ -94,6 +94,7 @@
   const backingAudio = document.getElementById("backingAudio");
   const backingDisc = document.getElementById("backingDisc");
   const backingDiscState = document.getElementById("backingDiscState");
+  const backingToggle = document.getElementById("backingToggle");
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
@@ -372,6 +373,7 @@
     backingSegmentSession.hidden = !segmentActive;
     backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
     backingDiscState.textContent = playing ? "点击暂停" : reachedSegmentEnd ? "重新试听" : backingAudio.currentTime > 0 ? "继续播放" : "点击播放";
+    backingToggle.textContent = segmentActive ? (playing ? "试听暂停" : "试听开始") : (playing ? "暂停" : "播放");
     const editingActiveSegment = segmentActive && activeBackingSegmentId === editingBackingMeasureId;
     segmentPlaybackToggle.textContent = editingActiveSegment ? (playing ? "暂停片段" : "继续片段") : "播放片段";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
@@ -1725,6 +1727,7 @@
   backingPlayer.addEventListener("pointercancel", endBackingHold);
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
+  backingToggle.addEventListener("click", toggleBacking);
   backingInlineProgress.addEventListener("input", () => setBackingPosition(backingInlineProgress.value));
   document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
   document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
