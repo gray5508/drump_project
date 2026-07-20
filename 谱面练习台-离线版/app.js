@@ -93,7 +93,7 @@
   const backingPlayer = document.getElementById("backingPlayer");
   const backingAudio = document.getElementById("backingAudio");
   const backingDisc = document.getElementById("backingDisc");
-  const backingToggle = document.getElementById("backingToggle");
+  const backingDiscState = document.getElementById("backingDiscState");
   const backingRate = document.getElementById("backingRate");
   const backingRateValue = document.getElementById("backingRateValue");
   const backingStatus = document.getElementById("backingStatus");
@@ -116,7 +116,6 @@
   const backingSpeedDrawer = document.getElementById("backingSpeedDrawer");
   const backingCollapse = document.getElementById("backingCollapse");
   const backingSegmentSession = document.getElementById("backingSegmentSession");
-  const backingSegmentSessionLabel = document.getElementById("backingSegmentSessionLabel");
   const activeBoundaryMarkers = document.querySelectorAll("[data-active-boundary]");
   const editorBoundaryMarkers = document.querySelectorAll("[data-editor-boundary]");
   const backingSeekHud = document.getElementById("backingSeekHud");
@@ -367,17 +366,15 @@
     const rate = clampBackingRate(backingAudio.playbackRate) || 1;
     const playing = !backingAudio.paused && !backingAudio.ended;
     const segmentActive = Boolean(activeBackingSegmentId);
-    const activeMeasure = segmentActive ? measureMap.get(activeBackingSegmentId) : null;
+    const reachedSegmentEnd = segmentActive && Number.isFinite(activeBackingSegmentEnd) && backingAudio.currentTime >= activeBackingSegmentEnd - 0.05;
     backingPlayer.classList.toggle("playing", playing);
     backingPlayer.classList.toggle("segment-session-active", segmentActive);
     backingSegmentSession.hidden = !segmentActive;
-    backingSegmentSessionLabel.textContent = activeMeasure ? `第 ${activeMeasure.label} 小节` : "小节试听";
     backingPlayer.style.setProperty("--disc-speed", `${Math.max(0.65, 2.4 / rate)}s`);
-    backingToggle.textContent = playing ? "暂停" : "播放";
+    backingDiscState.textContent = playing ? "点击暂停" : reachedSegmentEnd ? "重新试听" : backingAudio.currentTime > 0 ? "继续播放" : "点击播放";
     const editingActiveSegment = segmentActive && activeBackingSegmentId === editingBackingMeasureId;
     segmentPlaybackToggle.textContent = editingActiveSegment ? (playing ? "暂停片段" : "继续片段") : "播放片段";
     backingDisc.setAttribute("aria-label", playing ? "暂停伴奏" : "播放伴奏");
-    const reachedSegmentEnd = segmentActive && Number.isFinite(activeBackingSegmentEnd) && backingAudio.currentTime >= activeBackingSegmentEnd - 0.05;
     backingStatus.textContent = segmentActive
       ? `${playing ? "片段播放中" : reachedSegmentEnd ? "片段已结束" : "片段已暂停"} · ${rate.toFixed(2)}×`
       : `${playing ? "播放中" : backingAudio.currentTime > 0 ? "已暂停" : "准备播放"} · ${rate.toFixed(2)}×`;
@@ -1728,7 +1725,6 @@
   backingPlayer.addEventListener("pointercancel", endBackingHold);
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
-  backingToggle.addEventListener("click", toggleBacking);
   backingInlineProgress.addEventListener("input", () => setBackingPosition(backingInlineProgress.value));
   document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
   document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
