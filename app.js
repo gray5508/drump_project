@@ -17,7 +17,7 @@
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
   const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
   const BACKING_SEGMENTS_KEY = "drum-focus-backing-segments-v1";
-  const BACKING_PLAYER_UI_KEY = "drum-focus-backing-player-ui-v1";
+  const BACKING_PLAYER_UI_KEY = "drum-focus-backing-player-ui-v2";
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
@@ -498,6 +498,7 @@
     backingPlayer.style.top = `${position.top}px`;
     backingPlayer.style.right = "auto";
     backingPlayer.style.bottom = "auto";
+    backingPlayer.style.transform = "none";
     if (persist) {
       backingPlayerUi.position = position;
       saveBackingPlayerUi();
