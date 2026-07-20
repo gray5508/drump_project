@@ -115,7 +115,6 @@
   const backingInlineRateOutput = document.getElementById("backingInlineRateOutput");
   const backingSpeedDrawer = document.getElementById("backingSpeedDrawer");
   const backingCollapse = document.getElementById("backingCollapse");
-  const backingDragHandle = document.getElementById("backingDragHandle");
   const backingSegmentSession = document.getElementById("backingSegmentSession");
   const backingSegmentSessionLabel = document.getElementById("backingSegmentSessionLabel");
   const activeBoundaryMarkers = document.querySelectorAll("[data-active-boundary]");
@@ -154,7 +153,6 @@
   let backingProgressFrame = 0;
   let backingPlayerUi = readStorage(BACKING_PLAYER_UI_KEY, { collapsed: false, position: null });
   if (!backingPlayerUi || typeof backingPlayerUi !== "object" || Array.isArray(backingPlayerUi)) backingPlayerUi = { collapsed: false, position: null };
-  let backingPlayerDrag = null;
   let activeTutorialClips = [];
   let activeTutorialId = null;
   let activeTutorialClipIndex = -1;
@@ -514,10 +512,13 @@
     if (backingPlayerUi.collapsed) {
       backingSpeedDrawer.classList.remove("open");
       backingInlineRateValue.setAttribute("aria-expanded", "false");
+      ["left", "top", "right", "bottom", "transform"].forEach((property) => backingPlayer.style.removeProperty(property));
+    } else if (!backingPlayerUi.position) {
+      ["left", "top", "right", "bottom", "transform"].forEach((property) => backingPlayer.style.removeProperty(property));
     }
     if (persist) saveBackingPlayerUi();
     const keepInsideViewport = () => {
-      if (backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
+      if (!backingPlayerUi.collapsed && backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
     };
     requestAnimationFrame(keepInsideViewport);
     setTimeout(keepInsideViewport, 220);
@@ -527,33 +528,6 @@
     const open = typeof force === "boolean" ? force : !backingSpeedDrawer.classList.contains("open");
     backingSpeedDrawer.classList.toggle("open", open);
     backingInlineRateValue.setAttribute("aria-expanded", String(open));
-  }
-
-  function startBackingPlayerDrag(event) {
-    if (event.button !== undefined && event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = backingPlayer.getBoundingClientRect();
-    backingPlayerDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
-    backingPlayer.classList.add("dragging");
-    try { backingDragHandle.setPointerCapture?.(event.pointerId); } catch (error) { /* Pointer capture is optional. */ }
-  }
-
-  function moveBackingPlayer(event) {
-    if (!backingPlayerDrag || event.pointerId !== backingPlayerDrag.pointerId) return;
-    event.preventDefault();
-    setBackingPlayerPosition(
-      backingPlayerDrag.left + event.clientX - backingPlayerDrag.x,
-      backingPlayerDrag.top + event.clientY - backingPlayerDrag.y
-    );
-  }
-
-  function finishBackingPlayerDrag(event) {
-    if (!backingPlayerDrag || event.pointerId !== backingPlayerDrag.pointerId) return;
-    const rect = backingPlayer.getBoundingClientRect();
-    backingPlayerDrag = null;
-    backingPlayer.classList.remove("dragging");
-    setBackingPlayerPosition(rect.left, rect.top, true);
   }
 
   function openBackingSettings() {
@@ -765,15 +739,17 @@
     if (captureTarget?.hasPointerCapture?.(backingHoldStart.pointerId)) {
       try { captureTarget.releasePointerCapture(backingHoldStart.pointerId); } catch (error) { /* Pointer already ended. */ }
     }
+    backingPlayer.classList.remove("dragging");
     backingHoldStart = null;
   }
 
   function startBackingHold(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (event.target.closest("input,.backing-action,.backing-settings-button,.backing-quick-preview,.backing-segment-session,.backing-inline-speed,.backing-window-tools")) return;
+    if (backingPlayerUi.collapsed || event.target.closest("button,input,.backing-speed-drawer")) return;
     cancelBackingHold();
-    const captureTarget = event.target instanceof Element ? event.target : backingPlayer;
-    backingHoldStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, captureTarget, active: false, startFraction: 0 };
+    const rect = backingPlayer.getBoundingClientRect();
+    const captureTarget = backingPlayer;
+    backingHoldStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, captureTarget, active: false, dragging: false, startFraction: 0, left: rect.left, top: rect.top };
     backingHoldTimer = setTimeout(() => {
       suppressBackingToggleUntil = Date.now() + 800;
       if (!openBackingSeek()) {
@@ -789,8 +765,26 @@
 
   function moveBackingHold(event) {
     if (!backingHoldStart || event.pointerId !== backingHoldStart.pointerId) return;
+    if (backingHoldStart.dragging) {
+      event.preventDefault();
+      setBackingPlayerPosition(
+        backingHoldStart.left + event.clientX - backingHoldStart.x,
+        backingHoldStart.top + event.clientY - backingHoldStart.y
+      );
+      return;
+    }
     if (!backingHoldStart.active) {
-      if (Math.hypot(event.clientX - backingHoldStart.x, event.clientY - backingHoldStart.y) > 10) cancelBackingHold();
+      if (Math.hypot(event.clientX - backingHoldStart.x, event.clientY - backingHoldStart.y) > 10) {
+        clearTimeout(backingHoldTimer);
+        backingHoldTimer = null;
+        backingHoldStart.dragging = true;
+        backingPlayer.classList.add("dragging");
+        try { backingPlayer.setPointerCapture?.(event.pointerId); } catch (error) { /* Pointer capture is optional. */ }
+        setBackingPlayerPosition(
+          backingHoldStart.left + event.clientX - backingHoldStart.x,
+          backingHoldStart.top + event.clientY - backingHoldStart.y
+        );
+      }
       return;
     }
     event.preventDefault();
@@ -806,6 +800,7 @@
   function endBackingHold(event) {
     if (!backingHoldStart || event.pointerId !== backingHoldStart.pointerId) return;
     const wasActive = backingHoldStart.active;
+    const wasDragging = backingHoldStart.dragging;
     if (wasActive) {
       event.preventDefault();
       if (Number.isFinite(backingSeekTarget)) backingAudio.currentTime = backingSeekTarget;
@@ -814,8 +809,14 @@
       backingSeekTarget = null;
       closeBackingSeek();
     }
+    if (wasDragging) {
+      event.preventDefault();
+      const rect = backingPlayer.getBoundingClientRect();
+      backingPlayerUi.position = { left: rect.left, top: rect.top };
+      saveBackingPlayerUi();
+    }
     cancelBackingHold();
-    if (wasActive) syncBackingProgress();
+    if (wasActive || wasDragging) syncBackingProgress();
   }
 
   function handleBackingToggle() {
@@ -1735,15 +1736,11 @@
   backingInlineRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
   backingInlineRateValue.addEventListener("click", (event) => { event.stopPropagation(); toggleBackingSpeedDrawer(); });
   backingCollapse.addEventListener("click", () => setBackingPlayerCollapsed(!backingPlayerUi.collapsed));
-  backingDragHandle.addEventListener("pointerdown", startBackingPlayerDrag);
-  backingDragHandle.addEventListener("pointermove", moveBackingPlayer, { passive: false });
-  backingDragHandle.addEventListener("pointerup", finishBackingPlayerDrag);
-  backingDragHandle.addEventListener("pointercancel", finishBackingPlayerDrag);
   document.addEventListener("click", (event) => {
     if (!backingSpeedDrawer.contains(event.target) && event.target !== backingInlineRateValue) toggleBackingSpeedDrawer(false);
   });
   window.addEventListener("resize", () => {
-    if (backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
+    if (!backingPlayerUi.collapsed && backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
   });
   document.getElementById("stopBackingSegment").addEventListener("click", () => stopBackingSegmentSession());
   backingSettingsButton.addEventListener("click", openBackingSettings);
@@ -1821,7 +1818,7 @@
   buildPalette();
   setBackingRate(readStorage(BACKING_RATE_KEY, clampBackingRate(repositoryBackingConfig.globalRate) || 1));
   setBackingPlayerCollapsed(Boolean(backingPlayerUi.collapsed), false);
-  if (backingPlayerUi.position) requestAnimationFrame(() => setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top));
+  if (!backingPlayerUi.collapsed && backingPlayerUi.position) requestAnimationFrame(() => setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top));
   syncVideoScoreScale(videoScoreScale);
   syncTemplateControl();
   buildFullScore();
