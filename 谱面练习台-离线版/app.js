@@ -731,10 +731,33 @@
     return { ok: true, message: `正在以 ${segment.rate.toFixed(2)} 倍速播放第 ${measure.label} 小节伴奏，${range}` };
   }
 
+  function runMeasureDefaultAction(id) {
+    const measure = measureMap.get(id);
+    if (!measure) return { ok: false, message: "没有找到对应的小节" };
+    const segment = backingSegmentFor(id);
+    if (segment?.holdAction === "backing") return playBackingSegmentById(id);
+    const clips = tutorialClipsFor(id);
+    if (!clips.length) return { ok: false, message: `第 ${measure.label} 小节还没有教学视频` };
+    openTutorial(id);
+    return { ok: true, message: `正在播放第 ${measure.label} 小节教学视频` };
+  }
+
   function voicePlayBackingMeasure(number) {
     const measure = measureForNumber(Number(number));
     if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
     return playBackingSegmentById(measure.id);
+  }
+
+  function voicePlayMeasureDefault(number) {
+    const measure = measureForNumber(Number(number));
+    if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
+    return runMeasureDefaultAction(measure.id);
+  }
+
+  function voicePlaySelectedDefault() {
+    const selected = singleVoiceSelection();
+    if (!selected.ok) return selected;
+    return runMeasureDefaultAction(selected.id);
   }
 
   function voicePlaySelectedBackingMeasure() {
@@ -1034,13 +1057,8 @@
         suppressClickUntil = Date.now() + 1000;
         element.classList.remove("holding-video");
         if (practiceCard) practiceCard.draggable = true;
-        const segment = backingSegmentFor(id);
-        if (segment?.holdAction === "backing") {
-          const result = playBackingSegmentById(id);
-          if (!result.ok) showVideoToast(result.message);
-        } else {
-          openTutorial(id);
-        }
+        const result = runMeasureDefaultAction(id);
+        if (!result.ok) showVideoToast(result.message);
       }, 650);
     });
     element.addEventListener("pointermove", (event) => {
@@ -1743,6 +1761,8 @@
     pauseBacking,
     setBackingRate,
     seekBacking,
+    playMeasureDefault: voicePlayMeasureDefault,
+    playSelectedDefault: voicePlaySelectedDefault,
     playBackingMeasure: voicePlayBackingMeasure,
     playSelectedBackingMeasure: voicePlaySelectedBackingMeasure,
     restartBackingSegment: voiceRestartBackingSegment,

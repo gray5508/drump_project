@@ -45,7 +45,8 @@
     ["播放视频", "play-video"], ["打开视频", "play-video"], ["观看视频", "play-video"], ["播放教学视频", "play-video"],
     ["继续视频", "play-video"], ["恢复视频", "play-video"], ["教学视频", "play-video"],
     ["暂停", "pause-media"], ["暂停播放", "pause-media"], ["停止播放", "pause-media"],
-    ["播放", "play-media"], ["继续播放", "play-media"], ["恢复播放", "play-media"],
+    ["播放", "play-selected-default"], ["长按", "play-selected-default"],
+    ["继续播放", "play-media"], ["恢复播放", "play-media"],
 
     ["试听帮助", "backing-help"], ["伴奏帮助", "backing-help"], ["小节试听帮助", "backing-help"],
     ["语音帮助", "voice-help"], ["指令帮助", "voice-help"], ["打开帮助", "voice-help"],
@@ -65,13 +66,14 @@
       title: "伴奏与小节试听",
       commands: [
         ["播放伴奏 / 暂停伴奏", "控制整首伴奏或当前试听片段"],
-        ["播放第 26 小节", "按已保存的时间播放对应小节"],
+        ["播放第 26 小节", "执行该小节设置的长按默认动作"],
+        ["播放 / 长按", "执行当前唯一选中小节的长按默认动作"],
+        ["试听第 26 小节", "直接播放该小节的伴奏片段"],
         ["播放当前小节", "播放当前唯一标记小节的伴奏"],
         ["暂停试听 / 继续试听", "保持当前片段范围"],
         ["重新试听 / 从头试听", "回到当前片段开头"],
         ["停止试听 / 退出试听", "退出片段范围，恢复普通伴奏模式"],
         ["下一段伴奏 / 上一段伴奏", "切换到相邻的已配置小节"],
-        ["快进 10 秒 / 后退 5 秒", "试听中不会越过片段边界"],
         ["伴奏倍速 0.8 / 调到原速", "调整当前伴奏速度"],
         ["当前倍速 / 当前进度", "询问当前播放状态"]
       ]
@@ -111,12 +113,12 @@
   const HOTWORD_PHRASES = [
     "完整谱面", "按行练习", "小节编排", "下一小节", "上一小节", "下一行", "上一行",
     "播放视频", "暂停视频", "关闭视频", "下一个视频", "上一个视频",
-    "播放伴奏", "暂停伴奏", "继续伴奏", "播放当前小节", "试听当前小节",
+    "播放", "长按", "播放伴奏", "暂停伴奏", "继续伴奏", "播放当前小节", "试听当前小节",
     "播放第一小节", "播放第十小节", "播放第四十八小节", "播放第四十八小节伴奏",
     "暂停试听", "继续试听", "重新试听", "从头试听", "停止试听", "退出试听",
     "下一段伴奏", "上一段伴奏", "下一个试听小节", "上一个试听小节",
     "伴奏速率零点八", "伴奏倍率零点八", "伴奏倍速一点二", "零点八倍速伴奏", "调到原速",
-    "快进十秒", "快进二十秒", "后退五秒", "后退十秒", "回到片段开头",
+    "回到片段开头",
     "当前倍速", "当前进度", "这是第几小节", "伴奏状态", "试听帮助", "语音帮助", "关闭帮助",
     "第一个小节", "第十小节", "第四十六小节"
   ];
@@ -180,19 +182,13 @@
     return { type: "backing-rate", rate, signature: `backing-rate-${rate}` };
   }
 
-  function parseSeekCommand(text) {
-    const match = text.match(/(快进|前进|后退|快退)([零〇一二两三四五六七八九十\d]+)秒/);
-    if (!match) return null;
-    const seconds = chineseNumber(match[2]);
-    const direction = /快进|前进/.test(match[1]) ? 1 : -1;
-    return { type: "seek-backing", seconds: direction * seconds, signature: `seek-backing-${direction * seconds}` };
-  }
-
   function parsePlayBackingMeasureCommand(text) {
     const match = text.match(/^(?:播放|开始播放|试听|开始试听)(?:伴奏)?第?([零〇一二两三四五六七八九十\d]+)(?:个)?小节(?:伴奏)?$/);
     if (!match) return null;
     const number = chineseNumber(match[1]);
-    return { type: "play-backing-measure", number, signature: `play-backing-measure-${number}` };
+    const explicitBacking = /试听|伴奏/.test(text);
+    const type = explicitBacking ? "play-backing-measure" : "play-measure-default";
+    return { type, number, signature: `${type}-${number}` };
   }
 
   function parseMeasureCommand(text) {
@@ -210,7 +206,7 @@
     if (aliasType) return { type: aliasType, signature: aliasType };
     const patternRule = COMMAND_PATTERNS.find((rule) => rule.pattern.test(text));
     if (patternRule) return { type: patternRule.type, signature: patternRule.type };
-    for (const parser of [parseRateCommand, parseSeekCommand, parsePlayBackingMeasureCommand, parseMeasureCommand]) {
+    for (const parser of [parseRateCommand, parsePlayBackingMeasureCommand, parseMeasureCommand]) {
       const command = parser(text);
       if (command) return command;
     }
@@ -273,11 +269,12 @@
   const COMMAND_HANDLERS = new Map([
     ["switch-mode", (command) => window.DrumPracticeVoice.switchMode(command.mode)],
     ["play-media", playContextMedia], ["pause-media", pauseContextMedia],
+    ["play-selected-default", () => window.DrumPracticeVoice.playSelectedDefault()],
     ["play-backing", () => window.DrumPracticeVoice.playBacking()],
     ["pause-backing", () => window.DrumPracticeVoice.pauseBacking()],
     ["backing-rate", (command) => window.DrumPracticeVoice.setBackingRate(command.rate)],
     ["normal-backing-rate", () => window.DrumPracticeVoice.setBackingRate(1)],
-    ["seek-backing", (command) => window.DrumPracticeVoice.seekBacking(command.seconds)],
+    ["play-measure-default", (command) => window.DrumPracticeVoice.playMeasureDefault(command.number)],
     ["play-backing-measure", (command) => window.DrumPracticeVoice.playBackingMeasure(command.number)],
     ["play-selected-backing", () => window.DrumPracticeVoice.playSelectedBackingMeasure()],
     ["restart-backing-segment", () => window.DrumPracticeVoice.restartBackingSegment()],
