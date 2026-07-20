@@ -71,6 +71,7 @@
     .backing-player-v2 .backing-body{grid-template-columns:minmax(80px,94px) clamp(136px,17vw,160px) minmax(208px,1fr) auto}.backing-player-v2 .backing-controls{margin-left:-6px}
     @media(max-width:760px){.backing-player-v2 .backing-body{grid-template-columns:minmax(58px,70px) clamp(132px,18vw,146px) minmax(104px,1fr) auto}.backing-player-v2 .backing-controls{margin-left:-4px}}
     @media(max-width:520px){.backing-player-v2 .backing-body{grid-template-columns:132px minmax(82px,1fr) auto}.backing-player-v2 .backing-controls{margin-left:0}}
+    .voice-help-button{width:26px;height:26px;display:grid;place-items:center;padding:0;border:1px solid #d3d6df;border-radius:8px;background:#fff;color:#697183;font-size:12px;font-weight:850;cursor:pointer}.voice-help-button:hover{border-color:#9ca9da;background:#f3f5ff;color:var(--accent)}.voice-help-dialog{width:min(720px,calc(100vw - 28px));max-height:min(760px,calc(100vh - 28px));overflow:auto;border-radius:18px}.voice-help-shell{padding:20px}.voice-help-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.voice-help-head p{margin:0 0 3px;color:var(--accent);font-size:8px;font-weight:850;letter-spacing:.14em}.voice-help-head h3{margin:0;font-size:18px}.voice-help-close{width:34px;height:34px;flex:0 0 auto;border:0;border-radius:9px;background:#eef0f5;color:#555e70;font-size:20px;cursor:pointer}.voice-help-close:hover{background:#e3e7f1}.voice-help-content{display:grid;gap:12px}.voice-help-group{padding:14px;border:1px solid #e0e3eb;border-radius:13px;background:#fafbfe}.voice-help-group h4{margin:0 0 10px;font-size:12px}.voice-help-commands{display:grid;grid-template-columns:1fr 1fr;gap:7px}.voice-help-commands>div{min-width:0;padding:9px 10px;border-radius:9px;background:#fff;box-shadow:inset 0 0 0 1px #e7e9ef}.voice-help-commands strong,.voice-help-commands span{display:block}.voice-help-commands strong{color:#39445e;font-size:10px}.voice-help-commands span{margin-top:3px;color:#858b98;font-size:8px;line-height:1.45}.voice-help-note{margin:13px 2px 0;color:#8a909d;font-size:9px;text-align:center}@media(max-width:600px){.voice-help-shell{padding:15px}.voice-help-commands{grid-template-columns:1fr}.voice-help-dialog{max-height:calc(100vh - 18px)}.voice-help-button{width:28px;height:28px}.voice-state{display:none}}
   </style>
 </head>
 <body>
@@ -97,7 +98,7 @@
       <div class="recognition"><span>智能识别完成</span><strong>65 小节</strong></div>
     </header>
     <nav class="modebar" aria-label="练习模式">
-      <div class="global-tools"><div class="palette global-palette"><span class="label">标记颜色</span><div class="palette-list" id="palette"></div><span class="active-name" id="colorName">专注蓝</span></div><div class="voice-tools"><button class="voice-listen" id="listenButton" type="button"><span class="voice-dot"></span><span id="listenLabel">开始监听</span></button><span class="voice-state" id="voiceState">等待启动</span><span class="voice-transcript" id="transcript" aria-live="polite">唤醒词：麦当劳</span></div></div>
+      <div class="global-tools"><div class="palette global-palette"><span class="label">标记颜色</span><div class="palette-list" id="palette"></div><span class="active-name" id="colorName">专注蓝</span></div><div class="voice-tools"><button class="voice-listen" id="listenButton" type="button"><span class="voice-dot"></span><span id="listenLabel">开始监听</span></button><button class="voice-help-button" id="voiceHelpButton" type="button" aria-label="打开语音指令帮助" title="语音帮助">?</button><span class="voice-state" id="voiceState">等待启动</span><span class="voice-transcript" id="transcript" aria-live="polite">唤醒词：麦当劳</span></div></div>
       <div class="mode-tabs"><button class="mode-tab active" data-mode="full">完整谱面</button><button class="mode-tab" data-mode="line">按行练习</button><button class="mode-tab" data-mode="arrange">小节编排 <em id="selectedCount">0</em></button></div>
       <span class="mode-spacer" aria-hidden="true"></span>
     </nav>
@@ -148,6 +149,9 @@
   <dialog id="unsavedDialog">
     <div class="dialog-body"><h3>当前组合尚未保存</h3><p>读取其他组合前，要先保存现在的排列吗？</p><div class="dialog-actions"><button type="button" class="soft-button" id="cancelLoad">取消</button><button type="button" class="soft-button" id="discardLoad">不保存，直接读取</button><button type="button" class="primary-button" id="saveThenLoad">保存后读取</button></div></div>
   </dialog>
+  <dialog class="voice-help-dialog" id="voiceHelpDialog">
+    <div class="voice-help-shell"><div class="voice-help-head"><div><p>VOICE · COMMANDS</p><h3 id="voiceHelpTitle">语音指令帮助</h3></div><button class="voice-help-close" id="closeVoiceHelp" type="button" aria-label="关闭语音帮助">×</button></div><div class="voice-help-content" id="voiceHelpContent"></div><p class="voice-help-note">看完后点击窗口外空白处、右上角 × 或按 Esc 即可关闭</p></div>
+  </dialog>
   <dialog class="video-dialog" id="videoDialog">
     <div class="video-shell">
       <div class="video-header"><div class="video-heading"><p>TUTORIAL · LOOP</p><h3 id="videoTitle">教学视频</h3></div><button type="button" class="video-close" id="closeVideo" aria-label="关闭视频">×</button></div>
@@ -160,8 +164,8 @@
 
   <script src="measures.js"></script>
   <script src="backing-config.js?v=20260719121315"></script>
-  <script src="app.js?v=20260720-segment-timeline"></script>
-  <script src="voice-adapter.js?v=20260719-unified-backing"></script>
-  <script src="qwen-cloud.js?v=20260719-unified-backing"></script>
+  <script src="app.js?v=20260720-voice-backing-context"></script>
+  <script src="voice-adapter.js?v=20260720-voice-help"></script>
+  <script src="qwen-cloud.js?v=20260720-shared-hotwords"></script>
 </body>
 </html>

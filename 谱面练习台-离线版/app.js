@@ -443,7 +443,9 @@
   function pauseBacking() {
     if (backingAudio.paused) return { ok: false, message: "伴奏当前没有播放" };
     backingAudio.pause();
-    return { ok: true, message: "已暂停伴奏" };
+    return activeBackingSegmentId
+      ? { ok: true, message: `已暂停第 ${measureMap.get(activeBackingSegmentId)?.label || "当前"} 小节试听` }
+      : { ok: true, message: "已暂停伴奏" };
   }
 
   function seekBacking(seconds) {
@@ -454,12 +456,24 @@
     const minimum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart) ? activeBackingSegmentStart : 0;
     const maximum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentEnd) ? activeBackingSegmentEnd : duration;
     const target = Math.max(minimum, Math.min(maximum, backingAudio.currentTime + amount));
+    if (Math.abs(target - backingAudio.currentTime) < 0.01) {
+      const boundary = amount > 0 ? "结尾" : "开头";
+      return { ok: false, message: activeBackingSegmentId ? `已经到试听片段${boundary}` : `已经到伴奏${boundary}` };
+    }
     backingAudio.currentTime = target;
     syncBackingProgress();
     const action = amount > 0 ? "快进" : "后退";
     const moved = Math.round(Math.abs(amount));
     showVideoToast(`伴奏已${action} ${moved} 秒`);
-    return { ok: true, message: `伴奏已${action} ${moved} 秒，当前 ${formatBackingTime(target)}` };
+    const displayedTarget = activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart)
+      ? Math.max(0, target - activeBackingSegmentStart)
+      : target;
+    return {
+      ok: true,
+      message: activeBackingSegmentId
+        ? `试听已${action} ${moved} 秒，片段内 ${formatBackingTime(displayedTarget)}`
+        : `伴奏已${action} ${moved} 秒，当前 ${formatBackingTime(displayedTarget)}`
+    };
   }
 
   function toggleBacking() {
@@ -721,6 +735,82 @@
     const measure = measureForNumber(Number(number));
     if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
     return playBackingSegmentById(measure.id);
+  }
+
+  function voicePlaySelectedBackingMeasure() {
+    const selected = singleVoiceSelection();
+    if (!selected.ok) return selected;
+    return playBackingSegmentById(selected.id);
+  }
+
+  function voiceRestartBackingSegment() {
+    if (!activeBackingSegmentId || !Number.isFinite(activeBackingSegmentStart)) {
+      return { ok: false, message: "当前没有正在试听的小节" };
+    }
+    backingAudio.currentTime = activeBackingSegmentStart;
+    const result = playBacking();
+    syncBackingProgress();
+    return result.ok === false
+      ? result
+      : { ok: true, message: `已从头试听第 ${measureMap.get(activeBackingSegmentId)?.label || "当前"} 小节` };
+  }
+
+  function voiceMoveBackingSegment(direction) {
+    const configured = SCORE_DATA.measures.filter((measure) => Boolean(backingSegmentFor(measure.id)));
+    if (!configured.length) return { ok: false, message: "目前还没有设置任何小节伴奏时间" };
+    const selected = selectedIds();
+    const anchorId = activeBackingSegmentId || (selected.length === 1 ? selected[0] : null);
+    let currentIndex = configured.findIndex((measure) => measure.id === anchorId);
+    if (currentIndex < 0) currentIndex = direction > 0 ? -1 : configured.length;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= configured.length) {
+      return { ok: false, message: direction > 0 ? "已经是最后一个已设置的试听小节" : "已经是第一个已设置的试听小节" };
+    }
+    return playBackingSegmentById(configured[nextIndex].id);
+  }
+
+  function backingVoiceState() {
+    const duration = backingDurationValue();
+    const segmentActive = Boolean(activeBackingSegmentId);
+    const measure = segmentActive ? measureMap.get(activeBackingSegmentId) : null;
+    return {
+      playing: !backingAudio.paused && !backingAudio.ended,
+      started: backingAudio.currentTime > 0,
+      segmentActive,
+      segmentId: activeBackingSegmentId,
+      segmentLabel: measure?.label || null,
+      segmentStart: activeBackingSegmentStart,
+      segmentEnd: activeBackingSegmentEnd,
+      currentTime: backingAudio.currentTime,
+      duration,
+      rate: clampBackingRate(backingAudio.playbackRate) || 1
+    };
+  }
+
+  function voiceDescribeBacking(kind = "all") {
+    const state = backingVoiceState();
+    if (kind === "rate") return { ok: true, message: `当前伴奏倍速是 ${state.rate.toFixed(2)} 倍` };
+    if (kind === "measure") {
+      return state.segmentActive
+        ? { ok: true, message: `当前正在试听第 ${state.segmentLabel} 小节` }
+        : { ok: false, message: "当前不是小节试听状态" };
+    }
+    if (kind === "position") {
+      const current = state.segmentActive ? Math.max(0, state.currentTime - state.segmentStart) : state.currentTime;
+      const total = state.segmentActive ? Math.max(0, state.segmentEnd - state.segmentStart) : state.duration;
+      return {
+        ok: true,
+        message: state.segmentActive
+          ? `第 ${state.segmentLabel} 小节试听到 ${formatBackingTime(current)}，共 ${formatBackingTime(total)}`
+          : `伴奏播放到 ${formatBackingTime(current)}，共 ${formatBackingTime(total)}`
+      };
+    }
+    return {
+      ok: true,
+      message: state.segmentActive
+        ? `第 ${state.segmentLabel} 小节${state.playing ? "正在试听" : "已暂停"}，${state.rate.toFixed(2)} 倍速`
+        : `伴奏${state.playing ? "正在播放" : state.started ? "已暂停" : "尚未开始"}，${state.rate.toFixed(2)} 倍速`
+    };
   }
 
   function stopBackingSegmentAtBoundary() {
@@ -1653,7 +1743,16 @@
     pauseBacking,
     setBackingRate,
     seekBacking,
-    playBackingMeasure: voicePlayBackingMeasure
+    playBackingMeasure: voicePlayBackingMeasure,
+    playSelectedBackingMeasure: voicePlaySelectedBackingMeasure,
+    restartBackingSegment: voiceRestartBackingSegment,
+    stopBackingSegment: () => activeBackingSegmentId
+      ? stopBackingSegmentSession()
+      : { ok: false, message: "当前没有正在试听的小节" },
+    nextBackingSegment: () => voiceMoveBackingSegment(1),
+    prevBackingSegment: () => voiceMoveBackingSegment(-1),
+    getBackingState: backingVoiceState,
+    describeBacking: voiceDescribeBacking
   };
 
   function updatePageScale() {
