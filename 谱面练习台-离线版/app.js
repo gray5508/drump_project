@@ -17,6 +17,7 @@
   const TEMPLATE_SIZE_KEY = "drum-focus-template-size-v1";
   const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
   const BACKING_SEGMENTS_KEY = "drum-focus-backing-segments-v1";
+  const BACKING_PLAYER_UI_KEY = "drum-focus-backing-player-ui-v1";
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
@@ -106,6 +107,15 @@
   const backingQuickTime = document.getElementById("backingQuickTime");
   const backingQuickDuration = document.getElementById("backingQuickDuration");
   const backingQuickRate = document.getElementById("backingQuickRate");
+  const backingInlineProgress = document.getElementById("backingInlineProgress");
+  const backingInlineCurrent = document.getElementById("backingInlineCurrent");
+  const backingInlineDuration = document.getElementById("backingInlineDuration");
+  const backingInlineRate = document.getElementById("backingInlineRate");
+  const backingInlineRateValue = document.getElementById("backingInlineRateValue");
+  const backingInlineRateOutput = document.getElementById("backingInlineRateOutput");
+  const backingSpeedDrawer = document.getElementById("backingSpeedDrawer");
+  const backingCollapse = document.getElementById("backingCollapse");
+  const backingDragHandle = document.getElementById("backingDragHandle");
   const backingSegmentSession = document.getElementById("backingSegmentSession");
   const backingSegmentSessionLabel = document.getElementById("backingSegmentSessionLabel");
   const activeBoundaryMarkers = document.querySelectorAll("[data-active-boundary]");
@@ -142,6 +152,9 @@
   let activeBackingSegmentEnd = null;
   let editingBackingMeasureId = null;
   let backingProgressFrame = 0;
+  let backingPlayerUi = readStorage(BACKING_PLAYER_UI_KEY, { collapsed: false, position: null });
+  if (!backingPlayerUi || typeof backingPlayerUi !== "object" || Array.isArray(backingPlayerUi)) backingPlayerUi = { collapsed: false, position: null };
+  let backingPlayerDrag = null;
   let activeTutorialClips = [];
   let activeTutorialId = null;
   let activeTutorialClipIndex = -1;
@@ -336,6 +349,10 @@
     backingQuickFill.style.width = `${fraction * 100}%`;
     backingQuickTime.textContent = formatBackingTime(displayedTime);
     backingQuickDuration.textContent = formatBackingTime(duration);
+    backingInlineProgress.max = String(duration || 100);
+    if (!backingInlineProgress.matches(":active")) backingInlineProgress.value = String(displayedTime);
+    backingInlineCurrent.textContent = formatBackingTime(displayedTime);
+    backingInlineDuration.textContent = formatBackingTime(duration);
     backingSettingsProgress.max = String(duration || 100);
     if (!backingSettingsProgress.matches(":active")) backingSettingsProgress.value = String(displayedTime);
     backingSettingsCurrent.textContent = formatBackingTime(displayedTime);
@@ -388,6 +405,9 @@
     backingRate.value = String(rate);
     backingRateValue.textContent = `${rate.toFixed(2)}×`;
     backingQuickRate.textContent = `${rate.toFixed(2)}×`;
+    backingInlineRate.value = String(rate);
+    backingInlineRateValue.textContent = `${rate.toFixed(2)}×`;
+    backingInlineRateOutput.textContent = `${rate.toFixed(2)}×`;
     writeStorage(BACKING_RATE_KEY, rate);
     syncBackingPlayer();
     if (measureSegmentDialog.open) updateMeasureSegmentSummary();
@@ -457,6 +477,82 @@
     syncBackingPlayer();
     if (options.notify !== false) showVideoToast("已停止小节试听，恢复普通伴奏模式");
     return { ok: true, message: "已停止小节试听，恢复普通伴奏模式" };
+  }
+
+  function saveBackingPlayerUi() {
+    writeStorage(BACKING_PLAYER_UI_KEY, backingPlayerUi);
+  }
+
+  function clampBackingPlayerPosition(left, top) {
+    const rect = backingPlayer.getBoundingClientRect();
+    const margin = 8;
+    return {
+      left: Math.max(margin, Math.min(window.innerWidth - rect.width - margin, Number(left) || margin)),
+      top: Math.max(margin, Math.min(window.innerHeight - rect.height - margin, Number(top) || margin))
+    };
+  }
+
+  function setBackingPlayerPosition(left, top, persist = false) {
+    const position = clampBackingPlayerPosition(left, top);
+    backingPlayer.style.left = `${position.left}px`;
+    backingPlayer.style.top = `${position.top}px`;
+    backingPlayer.style.right = "auto";
+    backingPlayer.style.bottom = "auto";
+    if (persist) {
+      backingPlayerUi.position = position;
+      saveBackingPlayerUi();
+    }
+  }
+
+  function setBackingPlayerCollapsed(collapsed, persist = true) {
+    backingPlayerUi.collapsed = Boolean(collapsed);
+    backingPlayer.classList.toggle("collapsed", backingPlayerUi.collapsed);
+    backingCollapse.textContent = backingPlayerUi.collapsed ? "+" : "−";
+    backingCollapse.title = backingPlayerUi.collapsed ? "展开伴奏播放器" : "最小化伴奏播放器";
+    backingCollapse.setAttribute("aria-label", backingCollapse.title);
+    if (backingPlayerUi.collapsed) {
+      backingSpeedDrawer.classList.remove("open");
+      backingInlineRateValue.setAttribute("aria-expanded", "false");
+    }
+    if (persist) saveBackingPlayerUi();
+    const keepInsideViewport = () => {
+      if (backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
+    };
+    requestAnimationFrame(keepInsideViewport);
+    setTimeout(keepInsideViewport, 220);
+  }
+
+  function toggleBackingSpeedDrawer(force) {
+    const open = typeof force === "boolean" ? force : !backingSpeedDrawer.classList.contains("open");
+    backingSpeedDrawer.classList.toggle("open", open);
+    backingInlineRateValue.setAttribute("aria-expanded", String(open));
+  }
+
+  function startBackingPlayerDrag(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = backingPlayer.getBoundingClientRect();
+    backingPlayerDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    backingPlayer.classList.add("dragging");
+    try { backingDragHandle.setPointerCapture?.(event.pointerId); } catch (error) { /* Pointer capture is optional. */ }
+  }
+
+  function moveBackingPlayer(event) {
+    if (!backingPlayerDrag || event.pointerId !== backingPlayerDrag.pointerId) return;
+    event.preventDefault();
+    setBackingPlayerPosition(
+      backingPlayerDrag.left + event.clientX - backingPlayerDrag.x,
+      backingPlayerDrag.top + event.clientY - backingPlayerDrag.y
+    );
+  }
+
+  function finishBackingPlayerDrag(event) {
+    if (!backingPlayerDrag || event.pointerId !== backingPlayerDrag.pointerId) return;
+    const rect = backingPlayer.getBoundingClientRect();
+    backingPlayerDrag = null;
+    backingPlayer.classList.remove("dragging");
+    setBackingPlayerPosition(rect.left, rect.top, true);
   }
 
   function openBackingSettings() {
@@ -673,7 +769,7 @@
 
   function startBackingHold(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (event.target.closest("input,.backing-action,.backing-settings-button,.backing-quick-preview,.backing-segment-session")) return;
+    if (event.target.closest("input,.backing-action,.backing-settings-button,.backing-quick-preview,.backing-segment-session,.backing-inline-speed,.backing-window-tools")) return;
     cancelBackingHold();
     const captureTarget = event.target instanceof Element ? event.target : backingPlayer;
     backingHoldStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, captureTarget, active: false, startFraction: 0 };
@@ -1631,6 +1727,23 @@
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
+  backingInlineProgress.addEventListener("input", () => setBackingPosition(backingInlineProgress.value));
+  document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
+  document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
+  backingInlineRate.addEventListener("input", () => setBackingRate(backingInlineRate.value));
+  backingInlineRate.addEventListener("change", () => showVideoToast(`伴奏速率：${backingAudio.playbackRate.toFixed(2)} 倍`));
+  backingInlineRateValue.addEventListener("click", (event) => { event.stopPropagation(); toggleBackingSpeedDrawer(); });
+  backingCollapse.addEventListener("click", () => setBackingPlayerCollapsed(!backingPlayerUi.collapsed));
+  backingDragHandle.addEventListener("pointerdown", startBackingPlayerDrag);
+  backingDragHandle.addEventListener("pointermove", moveBackingPlayer, { passive: false });
+  backingDragHandle.addEventListener("pointerup", finishBackingPlayerDrag);
+  backingDragHandle.addEventListener("pointercancel", finishBackingPlayerDrag);
+  document.addEventListener("click", (event) => {
+    if (!backingSpeedDrawer.contains(event.target) && event.target !== backingInlineRateValue) toggleBackingSpeedDrawer(false);
+  });
+  window.addEventListener("resize", () => {
+    if (backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
+  });
   document.getElementById("stopBackingSegment").addEventListener("click", () => stopBackingSegmentSession());
   backingSettingsButton.addEventListener("click", openBackingSettings);
   document.getElementById("closeBackingSettings").addEventListener("click", () => backingSettingsDialog.close());
@@ -1706,6 +1819,8 @@
 
   buildPalette();
   setBackingRate(readStorage(BACKING_RATE_KEY, clampBackingRate(repositoryBackingConfig.globalRate) || 1));
+  setBackingPlayerCollapsed(Boolean(backingPlayerUi.collapsed), false);
+  if (backingPlayerUi.position) requestAnimationFrame(() => setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top));
   syncVideoScoreScale(videoScoreScale);
   syncTemplateControl();
   buildFullScore();
