@@ -56,6 +56,9 @@
     .backing-disc-stack{display:flex;flex:0 0 auto;flex-direction:column;align-items:center;gap:4px}.backing-disc-stack>span{color:#747c8d;font-size:8px;font-weight:750;white-space:nowrap}.backing-player-v2.collapsed .backing-disc-stack>span{display:none}.backing-player-v2.segment-session-active .backing-primary{min-width:136px}.backing-player-v2 .backing-segment-session{margin-left:0}.backing-player-v2 .backing-segment-session button{min-width:112px;height:42px;padding:0 16px;font-size:10px}.backing-player-v2 .backing-controls:empty{display:none}
     @media(max-width:760px){.backing-player-v2.segment-session-active .backing-primary{min-width:92px}.backing-player-v2 .backing-segment-session button{min-width:104px;height:38px;padding:0 11px}}
     @media(max-width:520px){.backing-player-v2:not(.collapsed) .backing-disc-stack{display:none}.backing-player-v2.segment-session-active .backing-primary{display:none}.backing-player-v2.segment-session-active .backing-controls{display:flex}}
+    .backing-player-v2 .backing-controls{width:88px;min-width:88px;display:flex;align-items:center;justify-content:center}.backing-player-v2 .backing-segment-session{width:100%;margin:0}.backing-player-v2 .backing-segment-session button{width:100%;min-width:0;height:33px;padding:0 9px;border-radius:9px;font-size:9px;box-shadow:none}.backing-player-v2.segment-session-active .backing-primary{min-width:136px}
+    @media(max-width:760px){.backing-player-v2 .backing-controls{width:78px;min-width:78px}.backing-player-v2 .backing-segment-session button{min-width:0;height:33px;padding:0 6px}.backing-player-v2.segment-session-active .backing-primary{min-width:92px}}
+    @media(max-width:520px){.backing-player-v2 .backing-controls{width:76px;min-width:76px}.backing-player-v2 .backing-primary,.backing-player-v2.segment-session-active .backing-primary{display:none}}
   </style>
 </head>
 <body>
@@ -145,7 +148,7 @@
 
   <script src="measures.js"></script>
   <script src="backing-config.js?v=20260719121315"></script>
-  <script src="app.js?v=20260720-player-row-v4"></script>
+  <script src="app.js?v=20260720-player-row-v5"></script>
   <script src="voice-adapter.js?v=20260719-unified-backing"></script>
   <script src="qwen-cloud.js?v=20260719-unified-backing"></script>
 </body>
