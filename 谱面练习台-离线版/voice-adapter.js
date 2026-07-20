@@ -99,6 +99,15 @@
     }
   ];
 
+  // Qwen uses this corpus as recognition context rather than exposing a
+  // numeric hotword weight. Put the easily confused term first and repeat it
+  // in the command contexts that matter most.
+  const PRIORITY_HOTWORD_PHRASES = [
+    "试听", "试听", "试听",
+    "小节试听", "试听小节", "试听当前小节",
+    "暂停试听", "继续试听", "重新试听", "从头试听", "停止试听", "退出试听", "试听帮助"
+  ];
+
   const HOTWORD_PHRASES = [
     "完整谱面", "按行练习", "小节编排", "下一小节", "上一小节", "下一行", "上一行",
     "播放视频", "暂停视频", "关闭视频", "下一个视频", "上一个视频",
@@ -116,7 +125,9 @@
     return String(value || "")
       .replace(/\s+/g, "")
       .replace(/[，。！？、,!?]/g, "")
-      .replace(/买当劳|麦当牢|买当牢/g, WAKE_WORD);
+      .replace(/买当劳|麦当牢|买当牢/g, WAKE_WORD)
+      // Normalize the common Qwen homophones used nowhere else in commands.
+      .replace(/视听|试停|试厅|时听|十听|十厅/g, "试听");
   }
 
   function chineseNumber(raw) {
@@ -354,7 +365,7 @@
     openHelp,
     closeHelp,
     helpGroups: HELP_GROUPS,
-    hotwordCorpus: HOTWORD_PHRASES.join("。") + "。"
+    hotwordCorpus: [...PRIORITY_HOTWORD_PHRASES, ...HOTWORD_PHRASES].join("。") + "。"
   };
 
   window.addEventListener("practice-modechange", (event) => {
