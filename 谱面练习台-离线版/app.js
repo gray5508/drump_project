@@ -118,6 +118,7 @@
   const backingCollapse = document.getElementById("backingCollapse");
   const backingSegmentSession = document.getElementById("backingSegmentSession");
   const activeBoundaryMarkers = document.querySelectorAll("[data-active-boundary]");
+  const relativeBoundaryMarkers = document.querySelectorAll(".backing-inline-progress [data-active-boundary],.backing-seek-rail [data-active-boundary]");
   const editorBoundaryMarkers = document.querySelectorAll("[data-editor-boundary]");
   const backingSeekHud = document.getElementById("backingSeekHud");
   const backingSeekTrack = document.getElementById("backingSeekTrack");
@@ -328,6 +329,12 @@
   function syncBackingBoundaryMarkers() {
     const duration = backingDurationValue();
     syncBoundaryMarkers(activeBoundaryMarkers, activeBackingSegmentStart, activeBackingSegmentEnd, duration);
+    if (activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart) && Number.isFinite(activeBackingSegmentEnd)) {
+      relativeBoundaryMarkers.forEach((marker) => {
+        marker.classList.add("visible");
+        marker.style.left = marker.dataset.activeBoundary === "start" ? "0%" : "100%";
+      });
+    }
     if (measureSegmentDialog.open && editingBackingMeasureId) {
       const values = segmentFormValues();
       syncBoundaryMarkers(editorBoundaryMarkers, values.start, values.end === null ? duration : values.end, duration);
@@ -340,17 +347,22 @@
     const duration = backingDurationValue();
     const displayedTime = backingSeeking && Number.isFinite(backingSeekTarget) ? backingSeekTarget : backingAudio.currentTime;
     const fraction = duration ? Math.max(0, Math.min(1, displayedTime / duration)) : 0;
-    backingSeekFill.style.width = `${fraction * 100}%`;
-    backingSeekThumb.style.left = `${fraction * 100}%`;
-    backingCurrentTime.textContent = formatBackingTime(displayedTime);
-    backingDuration.textContent = formatBackingTime(duration);
+    const segmentTimeline = Boolean(activeBackingSegmentId) && Number.isFinite(activeBackingSegmentStart) && Number.isFinite(activeBackingSegmentEnd) && activeBackingSegmentEnd > activeBackingSegmentStart;
+    const timelineStart = segmentTimeline ? activeBackingSegmentStart : 0;
+    const timelineDuration = segmentTimeline ? activeBackingSegmentEnd - activeBackingSegmentStart : duration;
+    const timelineTime = Math.max(0, Math.min(timelineDuration, displayedTime - timelineStart));
+    const timelineFraction = timelineDuration ? timelineTime / timelineDuration : 0;
+    backingSeekFill.style.width = `${timelineFraction * 100}%`;
+    backingSeekThumb.style.left = `${timelineFraction * 100}%`;
+    backingCurrentTime.textContent = formatBackingTime(timelineTime);
+    backingDuration.textContent = formatBackingTime(timelineDuration);
     backingQuickFill.style.width = `${fraction * 100}%`;
     backingQuickTime.textContent = formatBackingTime(displayedTime);
     backingQuickDuration.textContent = formatBackingTime(duration);
-    backingInlineProgress.max = String(duration || 100);
-    if (!backingInlineProgress.matches(":active")) backingInlineProgress.value = String(displayedTime);
-    backingInlineCurrent.textContent = formatBackingTime(displayedTime);
-    backingInlineDuration.textContent = formatBackingTime(duration);
+    backingInlineProgress.max = String(timelineDuration || 100);
+    if (!backingInlineProgress.matches(":active")) backingInlineProgress.value = String(timelineTime);
+    backingInlineCurrent.textContent = formatBackingTime(timelineTime);
+    backingInlineDuration.textContent = formatBackingTime(timelineDuration);
     backingSettingsProgress.max = String(duration || 100);
     if (!backingSettingsProgress.matches(":active")) backingSettingsProgress.value = String(displayedTime);
     backingSettingsCurrent.textContent = formatBackingTime(displayedTime);
@@ -464,6 +476,14 @@
     backingAudio.currentTime = Math.max(minimum, Math.min(maximum, Number(value) || 0));
     syncBackingProgress();
     return true;
+  }
+
+  function setBackingInlinePosition(value) {
+    const offset = Number(value) || 0;
+    const actual = activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart)
+      ? activeBackingSegmentStart + offset
+      : offset;
+    return setBackingPosition(actual);
   }
 
   function stopBackingSegmentSession(options = {}) {
@@ -714,8 +734,11 @@
   function openBackingSeek() {
     const duration = Number.isFinite(backingAudio.duration) ? backingAudio.duration : 0;
     if (!duration || !backingHoldStart) return false;
+    const minimum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart) ? activeBackingSegmentStart : 0;
+    const maximum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentEnd) ? activeBackingSegmentEnd : duration;
+    const timelineDuration = Math.max(0.001, maximum - minimum);
     backingHoldStart.active = true;
-    backingHoldStart.startFraction = Math.max(0, Math.min(1, backingAudio.currentTime / duration));
+    backingHoldStart.startFraction = Math.max(0, Math.min(1, (backingAudio.currentTime - minimum) / timelineDuration));
     backingSeeking = true;
     backingSeekTarget = backingAudio.currentTime;
     backingPlayer.classList.add("seeking");
@@ -792,7 +815,7 @@
     const fraction = Math.max(0, Math.min(1, backingHoldStart.startFraction + (event.clientX - backingHoldStart.x) / dragWidth));
     const minimum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart) ? activeBackingSegmentStart : 0;
     const maximum = activeBackingSegmentId && Number.isFinite(activeBackingSegmentEnd) ? activeBackingSegmentEnd : duration;
-    backingSeekTarget = Math.max(minimum, Math.min(maximum, duration * fraction));
+    backingSeekTarget = minimum + (maximum - minimum) * fraction;
     syncBackingProgress();
   }
 
@@ -1728,7 +1751,7 @@
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
-  backingInlineProgress.addEventListener("input", () => setBackingPosition(backingInlineProgress.value));
+  backingInlineProgress.addEventListener("input", () => setBackingInlinePosition(backingInlineProgress.value));
   document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
   document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
   backingInlineRate.addEventListener("input", () => setBackingRate(backingInlineRate.value));
