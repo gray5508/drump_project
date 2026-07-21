@@ -45,8 +45,10 @@
     ["播放视频", "play-video"], ["打开视频", "play-video"], ["观看视频", "play-video"], ["播放教学视频", "play-video"],
     ["继续视频", "play-video"], ["恢复视频", "play-video"], ["教学视频", "play-video"],
     ["暂停", "pause-media"], ["暂停播放", "pause-media"], ["停止播放", "pause-media"],
-    ["播放", "play-selected-default"], ["长按", "play-selected-default"],
+    ["播放", "play-selected-context"], ["长按", "play-selected-context"],
     ["继续播放", "play-media"], ["恢复播放", "play-media"],
+    ["重新播放", "restart-media"], ["重新开始", "restart-media"], ["重播", "restart-media"],
+    ["退出", "close-media"], ["关闭", "close-media"], ["返回谱面", "close-media"],
 
     ["试听帮助", "backing-help"], ["伴奏帮助", "backing-help"], ["小节试听帮助", "backing-help"],
     ["语音帮助", "voice-help"], ["指令帮助", "voice-help"], ["打开帮助", "voice-help"],
@@ -68,6 +70,7 @@
         ["播放伴奏 / 暂停伴奏", "控制整首伴奏或当前试听片段"],
         ["播放第 26 小节", "执行该小节设置的长按默认动作"],
         ["播放 / 长按", "执行当前唯一选中小节的长按默认动作"],
+        ["暂停 / 重新播放 / 退出", "自动控制当前试听片段或教学视频"],
         ["试听第 26 小节", "直接播放该小节的伴奏片段"],
         ["播放当前小节", "播放当前唯一标记小节的伴奏"],
         ["暂停试听 / 继续试听", "保持当前片段范围"],
@@ -113,7 +116,8 @@
   const HOTWORD_PHRASES = [
     "完整谱面", "按行练习", "小节编排", "下一小节", "上一小节", "下一行", "上一行",
     "播放视频", "暂停视频", "关闭视频", "下一个视频", "上一个视频",
-    "播放", "长按", "播放伴奏", "暂停伴奏", "继续伴奏", "播放当前小节", "试听当前小节",
+    "播放", "长按", "暂停", "重新播放", "重播", "退出", "关闭", "返回谱面",
+    "播放伴奏", "暂停伴奏", "继续伴奏", "播放当前小节", "试听当前小节",
     "播放第一小节", "播放第十小节", "播放第四十八小节", "播放第四十八小节伴奏",
     "暂停试听", "继续试听", "重新试听", "从头试听", "停止试听", "退出试听",
     "下一段伴奏", "上一段伴奏", "下一个试听小节", "上一个试听小节",
@@ -250,10 +254,29 @@
       : window.DrumPracticeVoice.playBacking();
   }
 
+  function playSelectedContext() {
+    if (window.DrumPracticeVoice.isVideoOpen()) return window.DrumPracticeVoice.playVideo();
+    if (backingState().segmentActive) return window.DrumPracticeVoice.playBacking();
+    return window.DrumPracticeVoice.playSelectedDefault();
+  }
+
   function pauseContextMedia() {
     return window.DrumPracticeVoice.isVideoOpen()
       ? window.DrumPracticeVoice.pauseVideo()
       : window.DrumPracticeVoice.pauseBacking();
+  }
+
+  function restartContextMedia() {
+    if (window.DrumPracticeVoice.isVideoOpen()) return window.DrumPracticeVoice.restartVideo();
+    if (backingState().segmentActive) return window.DrumPracticeVoice.restartBackingSegment();
+    return { ok: false, message: "当前没有可重新播放的视频或试听片段" };
+  }
+
+  function closeContextMedia() {
+    if (helpDialog?.open) return closeHelp();
+    if (window.DrumPracticeVoice.isVideoOpen()) return window.DrumPracticeVoice.closeVideo();
+    if (backingState().segmentActive) return window.DrumPracticeVoice.stopBackingSegment();
+    return { ok: false, message: "当前没有需要退出的视频或试听片段" };
   }
 
   function moveContext(direction) {
@@ -269,7 +292,8 @@
   const COMMAND_HANDLERS = new Map([
     ["switch-mode", (command) => window.DrumPracticeVoice.switchMode(command.mode)],
     ["play-media", playContextMedia], ["pause-media", pauseContextMedia],
-    ["play-selected-default", () => window.DrumPracticeVoice.playSelectedDefault()],
+    ["play-selected-context", playSelectedContext],
+    ["restart-media", restartContextMedia], ["close-media", closeContextMedia],
     ["play-backing", () => window.DrumPracticeVoice.playBacking()],
     ["pause-backing", () => window.DrumPracticeVoice.pauseBacking()],
     ["backing-rate", (command) => window.DrumPracticeVoice.setBackingRate(command.rate)],

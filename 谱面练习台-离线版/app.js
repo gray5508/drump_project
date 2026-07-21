@@ -1706,6 +1706,16 @@
     return { ok: true, message: "教学视频已暂停" };
   }
 
+  function voiceRestartTutorial() {
+    if (!videoDialog.open || !tutorialVideo.currentSrc) {
+      return { ok: false, message: "当前没有打开的教学视频" };
+    }
+    tutorialVideo.currentTime = 0;
+    const playRequest = tutorialVideo.play();
+    if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
+    return { ok: true, message: "教学视频已从头播放" };
+  }
+
   function voiceMoveTutorial(direction) {
     if (!videoDialog.open || !activeTutorialId) return { ok: false, message: "当前没有打开的教学视频" };
     const playlist = tutorialPlaylist();
@@ -1753,6 +1763,7 @@
     prevLine: () => voiceMoveLine(-1),
     playVideo: voicePlayTutorial,
     pauseVideo: voicePauseTutorial,
+    restartVideo: voiceRestartTutorial,
     closeVideo: voiceCloseTutorial,
     isVideoOpen: () => videoDialog.open,
     nextVideo: () => voiceMoveTutorial(1),
