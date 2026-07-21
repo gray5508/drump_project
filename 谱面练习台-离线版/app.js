@@ -93,7 +93,9 @@
   const videoScoreScaleValue = document.getElementById("videoScoreScaleValue");
   const backingPlayer = document.getElementById("backingPlayer");
   const backingAudio = document.getElementById("backingAudio");
-  const backingTrackSelect = document.getElementById("backingTrackSelect");
+  const backingTrackMenu = document.getElementById("backingTrackMenu");
+  const backingTrackMenuButton = document.getElementById("backingTrackMenuButton");
+  const backingTrackOptions = [...document.querySelectorAll("#backingTrackOptions [data-track]")];
   const backingDisc = document.getElementById("backingDisc");
   const backingDiscState = document.getElementById("backingDiscState");
   const backingToggle = document.getElementById("backingToggle");
@@ -428,11 +430,15 @@
   }
 
   function switchBackingTrack(trackId, options = {}) {
-    const option = [...backingTrackSelect.options].find((item) => item.value === trackId)
-      || backingTrackSelect.options[0];
+    const option = backingTrackOptions.find((item) => item.dataset.track === trackId)
+      || backingTrackOptions[0];
     if (!option) return { ok: false, message: "没有找到可用的伴奏版本" };
-    const nextTrackId = option.value;
-    backingTrackSelect.value = nextTrackId;
+    const nextTrackId = option.dataset.track;
+    backingTrackOptions.forEach((item) => {
+      const active = item === option;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-checked", String(active));
+    });
     writeStorage(BACKING_TRACK_KEY, nextTrackId);
     if (backingAudio.dataset.track === nextTrackId) {
       return { ok: true, message: `当前已经是${option.textContent}` };
@@ -458,6 +464,12 @@
       if (options.notify !== false) showVideoToast(`已切换到${option.textContent}`);
     }, { once: true });
     return { ok: true, message: `正在切换到${option.textContent}` };
+  }
+
+  function toggleBackingTrackMenu(force) {
+    const open = typeof force === "boolean" ? force : backingTrackOptions[0]?.parentElement.hidden;
+    document.getElementById("backingTrackOptions").hidden = !open;
+    backingTrackMenuButton.setAttribute("aria-expanded", String(open));
   }
 
   function playBacking() {
@@ -916,7 +928,7 @@
 
   function startBackingHold(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (backingPlayerUi.collapsed || event.target.closest("button,input,select,.backing-speed-drawer")) return;
+    if (backingPlayerUi.collapsed || event.target.closest("button,input,.backing-speed-drawer")) return;
     cancelBackingHold();
     const rect = backingPlayer.getBoundingClientRect();
     const captureTarget = backingPlayer;
@@ -1917,7 +1929,14 @@
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
-  backingTrackSelect.addEventListener("change", () => switchBackingTrack(backingTrackSelect.value));
+  backingTrackMenuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleBackingTrackMenu();
+  });
+  backingTrackOptions.forEach((option) => option.addEventListener("click", () => {
+    switchBackingTrack(option.dataset.track);
+    toggleBackingTrackMenu(false);
+  }));
   backingInlineProgress.addEventListener("input", () => setBackingInlinePosition(backingInlineProgress.value));
   document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
   document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
@@ -1927,6 +1946,7 @@
   backingCollapse.addEventListener("click", () => setBackingPlayerCollapsed(!backingPlayerUi.collapsed));
   document.addEventListener("click", (event) => {
     if (!backingSpeedDrawer.contains(event.target) && event.target !== backingInlineRateValue) toggleBackingSpeedDrawer(false);
+    if (!backingTrackMenu.contains(event.target)) toggleBackingTrackMenu(false);
   });
   window.addEventListener("resize", () => {
     if (!backingPlayerUi.collapsed && backingPlayerUi.position) setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top, true);
