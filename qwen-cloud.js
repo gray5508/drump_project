@@ -9,6 +9,9 @@
   const transcript = document.getElementById("transcript");
   const voiceActivity = document.getElementById("voiceActivity");
   const voiceActivityText = document.getElementById("voiceActivityText");
+  const voiceRecognitionResult = document.getElementById("voiceRecognitionResult");
+  const videoVoiceActivity = document.getElementById("videoVoiceActivity");
+  const videoVoiceActivityText = document.getElementById("videoVoiceActivityText");
   const gate = VoicePractice.createWakeGate({ wakeWord: "麦当劳", activeMs: 10000, onCommand: handleCommandTriggered });
   let socket = null;
   let stream = null;
@@ -25,13 +28,39 @@
   let sessionReady = false;
   let cloudAttempt = 0;
   let phraseBoostDisabled = false;
+  let recognitionResultTimer = null;
+
+  function hideVoiceRecognitionResult() {
+    clearTimeout(recognitionResultTimer);
+    recognitionResultTimer = null;
+    if (voiceRecognitionResult) voiceRecognitionResult.classList.remove("show");
+  }
+
+  function showVoiceRecognitionResult(text) {
+    const postWakeText = String(text || "").replace(/麦当劳/g, "").trim();
+    if (!postWakeText || !voiceRecognitionResult) return;
+    clearTimeout(recognitionResultTimer);
+    voiceRecognitionResult.textContent = postWakeText;
+    voiceRecognitionResult.classList.remove("show");
+    void voiceRecognitionResult.offsetWidth;
+    voiceRecognitionResult.classList.add("show");
+    recognitionResultTimer = setTimeout(hideVoiceRecognitionResult, 1800);
+  }
 
   function setVoiceActivity(active, message = "可以说语音指令") {
     if (!voiceActivity) return;
     voiceActivity.classList.toggle("active", active);
     voiceActivity.setAttribute("aria-hidden", String(!active));
     if (voiceActivityText && message) voiceActivityText.textContent = message;
-    if (!active) voiceActivity.classList.remove("renewed");
+    if (videoVoiceActivity) {
+      videoVoiceActivity.classList.toggle("active", active);
+      videoVoiceActivity.setAttribute("aria-hidden", String(!active));
+    }
+    if (videoVoiceActivityText && message) videoVoiceActivityText.textContent = message;
+    if (!active) {
+      voiceActivity.classList.remove("renewed");
+      hideVoiceRecognitionResult();
+    }
   }
 
   function pulseVoiceActivity() {
@@ -39,6 +68,11 @@
     voiceActivity.classList.remove("renewed");
     void voiceActivity.offsetWidth;
     voiceActivity.classList.add("renewed");
+    if (videoVoiceActivity) {
+      videoVoiceActivity.classList.remove("renewed");
+      void videoVoiceActivity.offsetWidth;
+      videoVoiceActivity.classList.add("renewed");
+    }
   }
 
   function armCommandWindow() {
@@ -91,7 +125,7 @@
         input_audio_transcription: {
           language: "zh",
           corpus: {
-            text: "小节。下一小节。下一节。上一小节。上一节。下一行。上一行。播放视频。播放教学视频。视频。关闭视频。关闭教学视频。第一个小节。第十小节。第四十六小节。"
+            text: VoicePractice.hotwordCorpus
           }
         },
         turn_detection: {
@@ -136,7 +170,10 @@
       const text = event.transcript || event.text || "";
       const corrected = VoicePractice.normalizeSpeechText(text);
       transcript.textContent = corrected || "（没有识别到文字）";
-      if (corrected) gate.process(corrected, true);
+      if (corrected) {
+        showVoiceRecognitionResult(corrected);
+        gate.process(corrected, true);
+      }
       return;
     }
     if (event.type === "proxy.error" || event.type === "error") {
@@ -236,8 +273,8 @@
       transcript.textContent = "浏览器正在等待“麦当劳”…";
       VoicePractice.setStatus(
         phraseBoostEnabled
-          ? "Web Speech 正在等待“麦当劳”（已启用热词增强），尚未连接千问"
-          : "Web Speech 正在等待“麦当劳”（当前浏览器无热词接口），尚未连接千问",
+          ? "Web Speech 正在等待“麦当劳”（已启用热词增强），尚未连接"
+          : "Web Speech 正在等待“麦当劳”（当前浏览器无热词接口），尚未连接",
         true,
         "success"
       );
