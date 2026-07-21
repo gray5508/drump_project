@@ -18,6 +18,7 @@
   const BACKING_RATE_KEY = "drum-focus-backing-rate-v1";
   const BACKING_SEGMENTS_KEY = "drum-focus-backing-segments-v1";
   const BACKING_PLAYER_UI_KEY = "drum-focus-backing-player-ui-v2";
+  const BACKING_TRACK_KEY = "drum-focus-backing-track-v1";
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
@@ -92,6 +93,7 @@
   const videoScoreScaleValue = document.getElementById("videoScoreScaleValue");
   const backingPlayer = document.getElementById("backingPlayer");
   const backingAudio = document.getElementById("backingAudio");
+  const backingTrackSelect = document.getElementById("backingTrackSelect");
   const backingDisc = document.getElementById("backingDisc");
   const backingDiscState = document.getElementById("backingDiscState");
   const backingToggle = document.getElementById("backingToggle");
@@ -152,6 +154,7 @@
   let activeBackingSegmentEnd = null;
   let editingBackingMeasureId = null;
   let backingProgressFrame = 0;
+  let backingTrackSwitchToken = 0;
   let backingPlayerUi = readStorage(BACKING_PLAYER_UI_KEY, { collapsed: false, position: null });
   if (!backingPlayerUi || typeof backingPlayerUi !== "object" || Array.isArray(backingPlayerUi)) backingPlayerUi = { collapsed: false, position: null };
   let activeTutorialClips = [];
@@ -422,6 +425,39 @@
     if (measureSegmentDialog.open) updateMeasureSegmentSummary();
     if (notify) showVideoToast(`伴奏速率已调整为 ${rate.toFixed(2)} 倍`);
     return { ok: true, message: `伴奏速率已调整为 ${rate.toFixed(2)} 倍` };
+  }
+
+  function switchBackingTrack(trackId, options = {}) {
+    const option = [...backingTrackSelect.options].find((item) => item.value === trackId)
+      || backingTrackSelect.options[0];
+    if (!option) return { ok: false, message: "没有找到可用的伴奏版本" };
+    const nextTrackId = option.value;
+    backingTrackSelect.value = nextTrackId;
+    writeStorage(BACKING_TRACK_KEY, nextTrackId);
+    if (backingAudio.dataset.track === nextTrackId) {
+      return { ok: true, message: `当前已经是${option.textContent}` };
+    }
+
+    const token = ++backingTrackSwitchToken;
+    const currentTime = Number.isFinite(backingAudio.currentTime) ? backingAudio.currentTime : 0;
+    const rate = clampBackingRate(backingAudio.playbackRate) || 1;
+    const shouldResume = !backingAudio.paused && !backingAudio.ended;
+    backingAudio.pause();
+    backingStatus.textContent = `正在切换到${option.textContent}`;
+    backingAudio.dataset.track = nextTrackId;
+    backingAudio.src = option.dataset.src;
+    backingAudio.load();
+
+    backingAudio.addEventListener("loadedmetadata", () => {
+      if (token !== backingTrackSwitchToken) return;
+      const duration = backingDurationValue();
+      backingAudio.currentTime = Math.max(0, Math.min(currentTime, duration || currentTime));
+      setBackingRate(rate);
+      syncBackingPlayer();
+      if (shouldResume) playBacking();
+      if (options.notify !== false) showVideoToast(`已切换到${option.textContent}`);
+    }, { once: true });
+    return { ok: true, message: `正在切换到${option.textContent}` };
   }
 
   function playBacking() {
@@ -880,7 +916,7 @@
 
   function startBackingHold(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (backingPlayerUi.collapsed || event.target.closest("button,input,.backing-speed-drawer")) return;
+    if (backingPlayerUi.collapsed || event.target.closest("button,input,select,.backing-speed-drawer")) return;
     cancelBackingHold();
     const rect = backingPlayer.getBoundingClientRect();
     const captureTarget = backingPlayer;
@@ -1881,6 +1917,7 @@
   backingPlayer.addEventListener("contextmenu", (event) => { if (backingHoldStart?.active) event.preventDefault(); });
   backingDisc.addEventListener("click", handleBackingToggle);
   backingToggle.addEventListener("click", toggleBacking);
+  backingTrackSelect.addEventListener("change", () => switchBackingTrack(backingTrackSelect.value));
   backingInlineProgress.addEventListener("input", () => setBackingInlinePosition(backingInlineProgress.value));
   document.getElementById("backingSlower").addEventListener("click", () => setBackingRate(backingAudio.playbackRate - 0.05, true));
   document.getElementById("backingFaster").addEventListener("click", () => setBackingRate(backingAudio.playbackRate + 0.05, true));
@@ -1969,6 +2006,7 @@
 
   buildPalette();
   setBackingRate(readStorage(BACKING_RATE_KEY, clampBackingRate(repositoryBackingConfig.globalRate) || 1));
+  switchBackingTrack(readStorage(BACKING_TRACK_KEY, "original"), { notify: false });
   setBackingPlayerCollapsed(Boolean(backingPlayerUi.collapsed), false);
   if (!backingPlayerUi.collapsed && backingPlayerUi.position) requestAnimationFrame(() => setBackingPlayerPosition(backingPlayerUi.position.left, backingPlayerUi.position.top));
   syncVideoScoreScale(videoScoreScale);
