@@ -7,6 +7,11 @@
     { id: "coral", name: "难点红", fill: "rgba(235,100,91,.2)", preview: "rgba(235,100,91,.08)", hover: "rgba(235,100,91,.14)", border: "#df5e55" },
     { id: "green", name: "完成绿", fill: "rgba(62,166,124,.2)", preview: "rgba(62,166,124,.08)", hover: "rgba(62,166,124,.14)", border: "#32966c" }
   ];
+  const songId = new URLSearchParams(location.search).get("song") === "trap" ? "trap" : "rain";
+  const isTrap = songId === "trap";
+  const SCORE_DATA = isTrap ? window.TRAP_SCORE_DATA : window.SCORE_DATA;
+  const scoreImagePath = isTrap ? "assets/trap-score.png" : "assets/score.png";
+  const storageKey = (key) => isTrap ? `${key}-trap` : key;
   const measureMap = new Map(SCORE_DATA.measures.map((measure) => [measure.id, measure]));
   const systemMeasures = Array.from({ length: SCORE_DATA.systems }, (_, index) =>
     SCORE_DATA.measures.filter((measure) => measure.system === index + 1)
@@ -22,7 +27,7 @@
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
-  const VIDEO_LIBRARY = {
+  const VIDEO_LIBRARY = isTrap ? {} : {
     40: [
       { label: "片段 1", src: "video/measure-40-1.mp4", poster: "video/posters/measure-40-1.jpg" },
       { label: "片段 2", src: "video/measure-40-2.mp4", poster: "video/posters/measure-40-2.jpg" }
@@ -43,8 +48,9 @@
   let zoom = 100;
   let lineIndex = 0;
   let currentMode = "full";
-  const repositoryBackingConfig = window.DRUM_BACKING_CONFIG && typeof window.DRUM_BACKING_CONFIG === "object"
-    ? window.DRUM_BACKING_CONFIG
+  const songBackingConfig = isTrap ? window.TRAP_BACKING_CONFIG : window.DRUM_BACKING_CONFIG;
+  const repositoryBackingConfig = songBackingConfig && typeof songBackingConfig === "object"
+    ? songBackingConfig
     : { version: 1, revision: "", globalRate: 1, segments: {} };
   const repositoryBackingSegments = repositoryBackingConfig.segments && typeof repositoryBackingConfig.segments === "object"
     ? repositoryBackingConfig.segments
@@ -95,6 +101,30 @@
   const backingAudio = document.getElementById("backingAudio");
   const backingTrackMenu = document.getElementById("backingTrackMenu");
   const backingTrackMenuButton = document.getElementById("backingTrackMenuButton");
+  const songSelect = document.getElementById("songSelect");
+  songSelect.value = songId;
+  songSelect.addEventListener("change", () => {
+    const nextUrl = new URL(location.href);
+    if (songSelect.value === "trap") nextUrl.searchParams.set("song", "trap");
+    else nextUrl.searchParams.delete("song");
+    location.href = nextUrl.href;
+  });
+  if (isTrap) {
+    document.querySelector(".song strong").textContent = "陷阱";
+    document.querySelector(".song div > span").textContent = "王北车 · 架子鼓谱";
+    document.querySelector(".recognition strong").textContent = `${SCORE_DATA.measureCount} 小节`;
+    document.querySelector("#view-full .status div:first-child span:last-child").textContent = `离线模式 · 已识别 ${SCORE_DATA.systems} 行谱表、${SCORE_DATA.regions} 个可选区域`;
+    document.querySelector("#view-full .hint span").textContent = "单击标记颜色，双击设置伴奏时间，长按试听已设置伴奏";
+    scoreSourceImage.src = scoreImagePath;
+    scoreSourceImage.alt = "《陷阱》架子鼓谱";
+    backingAudio.src = "assets/trap.mp3";
+    const trackOptions = document.querySelectorAll("#backingTrackOptions [data-track]");
+    trackOptions[0].dataset.src = "assets/trap.mp3";
+    trackOptions[0].textContent = "原版音频";
+    trackOptions[1].remove();
+    document.querySelector("#segmentHoldAction option[value=video]").remove();
+    document.querySelector(".config-sync-card p").textContent = "本机保存后导出配置文件，替换仓库中的 trap-backing-config.js，平板即可读取同一套参数。";
+  }
   const backingTrackOptions = [...document.querySelectorAll("#backingTrackOptions [data-track]")];
   const backingDisc = document.getElementById("backingDisc");
   const backingDiscState = document.getElementById("backingDiscState");
@@ -167,7 +197,7 @@
 
   function readStorage(key, fallback) {
     try {
-      const value = JSON.parse(localStorage.getItem(key) || "null");
+      const value = JSON.parse(localStorage.getItem(storageKey(key)) || "null");
       return value ?? fallback;
     } catch (error) {
       return fallback;
@@ -175,7 +205,7 @@
   }
 
   function writeStorage(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { /* Offline storage may be disabled. */ }
+    try { localStorage.setItem(storageKey(key), JSON.stringify(value)); } catch (error) { /* Offline storage may be disabled. */ }
   }
 
   function selectedIds() {
@@ -632,11 +662,11 @@
       globalRate: clampBackingRate(backingAudio.playbackRate) || 1,
       segments: normalizedBackingSegments()
     };
-    const source = `(function () {\n  "use strict";\n  window.DRUM_BACKING_CONFIG = ${JSON.stringify(payload, null, 2)};\n})();\n`;
+    const source = `(function () {\n  "use strict";\n  window.${isTrap ? "TRAP_BACKING_CONFIG" : "DRUM_BACKING_CONFIG"} = ${JSON.stringify(payload, null, 2)};\n})();\n`;
     const url = URL.createObjectURL(new Blob([source], { type: "text/javascript;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "backing-config.js";
+    link.download = isTrap ? "trap-backing-config.js" : "backing-config.js";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -648,10 +678,10 @@
     if (!confirm("恢复仓库统一配置会覆盖这台设备尚未导出的伴奏设置，是否继续？")) return;
     if (activeBackingSegmentId) stopBackingSegmentSession({ pause: true, notify: false });
     backingSegments = JSON.parse(JSON.stringify(repositoryBackingSegments));
-    try { localStorage.removeItem(BACKING_SEGMENTS_KEY); } catch (error) { /* Storage may be disabled. */ }
+    try { localStorage.removeItem(storageKey(BACKING_SEGMENTS_KEY)); } catch (error) { /* Storage may be disabled. */ }
     const repositoryRate = clampBackingRate(repositoryBackingConfig.globalRate) || 1;
     setBackingRate(repositoryRate);
-    try { localStorage.removeItem(BACKING_RATE_KEY); } catch (error) { /* Storage may be disabled. */ }
+    try { localStorage.removeItem(storageKey(BACKING_RATE_KEY)); } catch (error) { /* Storage may be disabled. */ }
     refreshBackingSegmentIndicators();
     const editingId = editingBackingMeasureId;
     if (measureSegmentDialog.open) measureSegmentDialog.close();
@@ -723,7 +753,7 @@
     setSegmentEnd(end);
     segmentRate.value = String(rate);
     segmentRateValue.textContent = `${rate.toFixed(2)}×`;
-    segmentHoldAction.value = segment?.holdAction || "video";
+    segmentHoldAction.value = segment?.holdAction || (isTrap ? "backing" : "video");
     segmentToEnd.checked = !segment || segment.end === null;
     syncSegmentEndControls();
     document.getElementById("deleteMeasureSegment").hidden = !segment;
@@ -783,7 +813,7 @@
     const measure = measureMap.get(id);
     if (!measure) return { ok: false, message: "没有找到对应的小节" };
     const segment = backingSegmentFor(id);
-    if (segment?.holdAction === "backing") return playBackingSegmentById(id);
+    if (isTrap || segment?.holdAction === "backing") return playBackingSegmentById(id);
     const clips = tutorialClipsFor(id);
     if (!clips.length) return { ok: false, message: `第 ${measure.label} 小节还没有教学视频` };
     openTutorial(id);
@@ -1182,7 +1212,7 @@
     container.style.aspectRatio = `${crop.width * SCORE_DATA.pageWidth} / ${crop.height * SCORE_DATA.pageHeight}`;
     const image = document.createElement("img");
     image.className = "crop-image";
-    image.src = "assets/score.png";
+    image.src = scoreImagePath;
     image.alt = "";
     image.draggable = false;
     image.style.width = `${10000 / crop.width}%`;
@@ -1206,7 +1236,7 @@
       canvas.height = Math.max(1, Math.round(sh));
       canvas.getContext("2d").drawImage(scoreSourceImage, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     };
-    if (scoreSourceImage.complete) draw();
+    if (scoreSourceImage.complete && scoreSourceImage.naturalWidth) draw();
     else scoreSourceImage.addEventListener("load", draw, { once: true });
     container.appendChild(canvas);
     return canvas;
