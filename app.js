@@ -7,11 +7,19 @@
     { id: "coral", name: "难点红", fill: "rgba(235,100,91,.2)", preview: "rgba(235,100,91,.08)", hover: "rgba(235,100,91,.14)", border: "#df5e55" },
     { id: "green", name: "完成绿", fill: "rgba(62,166,124,.2)", preview: "rgba(62,166,124,.08)", hover: "rgba(62,166,124,.14)", border: "#32966c" }
   ];
-  const songId = new URLSearchParams(location.search).get("song") === "trap" ? "trap" : "rain";
-  const isTrap = songId === "trap";
-  const SCORE_DATA = isTrap ? window.TRAP_SCORE_DATA : window.SCORE_DATA;
-  const scoreImagePath = isTrap ? "assets/trap-score.png" : "assets/score.png";
-  const storageKey = (key) => isTrap ? `${key}-trap` : key;
+  const requestedSong = new URLSearchParams(location.search).get("song");
+  const songs = {
+    rain: { score: window.SCORE_DATA, image: "assets/score.png", config: window.DRUM_BACKING_CONFIG, configName: "DRUM_BACKING_CONFIG", configFile: "backing-config.js" },
+    trap: { title: "陷阱", artist: "王北车", score: window.TRAP_SCORE_DATA, image: "assets/trap-score.png", audio: "assets/trap.mp3", config: window.TRAP_BACKING_CONFIG, configName: "TRAP_BACKING_CONFIG", configFile: "trap-backing-config.js" },
+    flower: { title: "鲜花", artist: "回春丹乐队", score: window.FLOWER_SCORE_DATA, image: "assets/flower-score.png", audio: "assets/flower.mp3", config: window.FLOWER_BACKING_CONFIG, configName: "FLOWER_BACKING_CONFIG", configFile: "flower-backing-config.js" },
+    forever: { title: "永远都会在", artist: "旅行团乐队", score: window.FOREVER_SCORE_DATA, image: "assets/forever-score.png", audio: "assets/forever.mp3", config: window.FOREVER_BACKING_CONFIG, configName: "FOREVER_BACKING_CONFIG", configFile: "forever-backing-config.js" }
+  };
+  const songId = Object.hasOwn(songs, requestedSong) ? requestedSong : "rain";
+  const song = songs[songId];
+  const noTutorialVideo = songId !== "rain";
+  const SCORE_DATA = song.score;
+  const scoreImagePath = song.image;
+  const storageKey = (key) => songId === "rain" ? key : `${key}-${songId}`;
   const measureMap = new Map(SCORE_DATA.measures.map((measure) => [measure.id, measure]));
   const systemMeasures = Array.from({ length: SCORE_DATA.systems }, (_, index) =>
     SCORE_DATA.measures.filter((measure) => measure.system === index + 1)
@@ -27,7 +35,7 @@
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
-  const VIDEO_LIBRARY = isTrap ? {} : {
+  const VIDEO_LIBRARY = noTutorialVideo ? {} : {
     40: [
       { label: "片段 1", src: "video/measure-40-1.mp4", poster: "video/posters/measure-40-1.jpg" },
       { label: "片段 2", src: "video/measure-40-2.mp4", poster: "video/posters/measure-40-2.jpg" }
@@ -48,7 +56,7 @@
   let zoom = 100;
   let lineIndex = 0;
   let currentMode = "full";
-  const songBackingConfig = isTrap ? window.TRAP_BACKING_CONFIG : window.DRUM_BACKING_CONFIG;
+  const songBackingConfig = song.config;
   const repositoryBackingConfig = songBackingConfig && typeof songBackingConfig === "object"
     ? songBackingConfig
     : { version: 1, revision: "", globalRate: 1, segments: {} };
@@ -105,25 +113,25 @@
   songSelect.value = songId;
   songSelect.addEventListener("change", () => {
     const nextUrl = new URL(location.href);
-    if (songSelect.value === "trap") nextUrl.searchParams.set("song", "trap");
+    if (songSelect.value !== "rain") nextUrl.searchParams.set("song", songSelect.value);
     else nextUrl.searchParams.delete("song");
     location.href = nextUrl.href;
   });
-  if (isTrap) {
-    document.querySelector(".song strong").textContent = "陷阱";
-    document.querySelector(".song div > span").textContent = "王北车 · 架子鼓谱";
+  if (noTutorialVideo) {
+    document.querySelector(".song strong").textContent = song.title;
+    document.querySelector(".song div > span").textContent = `${song.artist} · 架子鼓谱`;
     document.querySelector(".recognition strong").textContent = `${SCORE_DATA.measureCount} 小节`;
     document.querySelector("#view-full .status div:first-child span:last-child").textContent = `离线模式 · 已识别 ${SCORE_DATA.systems} 行谱表、${SCORE_DATA.regions} 个可选区域`;
     document.querySelector("#view-full .hint span").textContent = "单击标记颜色，双击设置伴奏时间，长按试听已设置伴奏";
     scoreSourceImage.src = scoreImagePath;
-    scoreSourceImage.alt = "《陷阱》架子鼓谱";
-    backingAudio.src = "assets/trap.mp3";
+    scoreSourceImage.alt = `《${song.title}》架子鼓谱`;
+    backingAudio.src = song.audio;
     const trackOptions = document.querySelectorAll("#backingTrackOptions [data-track]");
-    trackOptions[0].dataset.src = "assets/trap.mp3";
+    trackOptions[0].dataset.src = song.audio;
     trackOptions[0].textContent = "原版音频";
     trackOptions[1].remove();
     document.querySelector("#segmentHoldAction option[value=video]").remove();
-    document.querySelector(".config-sync-card p").textContent = "本机保存后导出配置文件，替换仓库中的 trap-backing-config.js，平板即可读取同一套参数。";
+    document.querySelector(".config-sync-card p").textContent = `本机保存后导出配置文件，替换仓库中的 ${songId}-backing-config.js，平板即可读取同一套参数。`;
   }
   const backingTrackOptions = [...document.querySelectorAll("#backingTrackOptions [data-track]")];
   const backingDisc = document.getElementById("backingDisc");
@@ -234,7 +242,10 @@
     if (label && measure) {
       const action = palette ? (marks[id] === activeColor ? "点击取消" : "点击改色") : "点击标记";
       label.textContent = `${measure.label} · ${action}`;
-      element.setAttribute("aria-label", `第 ${measure.measureStart} 小节，${action}`);
+      const range = measure.measureEnd > measure.measureStart
+        ? `第 ${measure.measureStart} 至 ${measure.measureEnd} 小节`
+        : `第 ${measure.measureStart} 小节`;
+      element.setAttribute("aria-label", `${range}，${action}`);
     }
   }
 
@@ -662,11 +673,11 @@
       globalRate: clampBackingRate(backingAudio.playbackRate) || 1,
       segments: normalizedBackingSegments()
     };
-    const source = `(function () {\n  "use strict";\n  window.${isTrap ? "TRAP_BACKING_CONFIG" : "DRUM_BACKING_CONFIG"} = ${JSON.stringify(payload, null, 2)};\n})();\n`;
+    const source = `(function () {\n  "use strict";\n  window.${song.configName} = ${JSON.stringify(payload, null, 2)};\n})();\n`;
     const url = URL.createObjectURL(new Blob([source], { type: "text/javascript;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = isTrap ? "trap-backing-config.js" : "backing-config.js";
+    link.download = song.configFile;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -753,7 +764,7 @@
     setSegmentEnd(end);
     segmentRate.value = String(rate);
     segmentRateValue.textContent = `${rate.toFixed(2)}×`;
-    segmentHoldAction.value = segment?.holdAction || (isTrap ? "backing" : "video");
+    segmentHoldAction.value = segment?.holdAction || (noTutorialVideo ? "backing" : "video");
     segmentToEnd.checked = !segment || segment.end === null;
     syncSegmentEndControls();
     document.getElementById("deleteMeasureSegment").hidden = !segment;
@@ -813,7 +824,7 @@
     const measure = measureMap.get(id);
     if (!measure) return { ok: false, message: "没有找到对应的小节" };
     const segment = backingSegmentFor(id);
-    if (isTrap || segment?.holdAction === "backing") return playBackingSegmentById(id);
+    if (noTutorialVideo || segment?.holdAction === "backing") return playBackingSegmentById(id);
     const clips = tutorialClipsFor(id);
     if (!clips.length) return { ok: false, message: `第 ${measure.label} 小节还没有教学视频` };
     openTutorial(id);
