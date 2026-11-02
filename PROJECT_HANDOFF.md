@@ -1,6 +1,6 @@
 # 谱面练习台项目交接说明
 
-更新时间：2026-07-22
+更新时间：2026-11-02
 
 这份文件是后续新任务的主要入口。开始修改前，应先阅读本文件，再检查实际代码和 Git 状态。聊天记录只作为补充，不应当作为唯一依据。
 
@@ -36,6 +36,8 @@
 | `video/` | 教学视频与海报截图 |
 | `使用说明.txt` | 面向用户的操作说明，但部分语音内容需要按当前代码更新 |
 
+曲目还包括《陷阱》《鲜花》和《永远都会在》，分别使用 `trap-*`、`flower-*`、`forever-*` 谱面与伴奏配置，以及 `assets/` 中对应的谱图和音频。`app.js` 通过 URL 的 `song` 参数切换；默认曲目仍是《就让这大雨全部落下》。
+
 其他目录的定位：
 
 - `阿里云函数-实时语音代理/`：阿里云函数代理的正式服务端代码，不能作为测试目录删除。
@@ -53,7 +55,7 @@
 | `main` | 保存正式源码文件夹和项目资料 |
 | `gh-pages` | GitHub Pages 实际发布内容，正式页面文件位于该分支根目录 |
 
-截至本文整理前的功能基线：
+2026-07-22 的历史基线（最新提交以 Git 记录为准）：
 
 - `main`: `58ed054`（伴奏标题曲目菜单）
 - `gh-pages`: `d59ba75`（已部署当前正式练习台及两份伴奏）
@@ -76,10 +78,10 @@ https://gray5508.github.io/drump_project/
 6. 将正式目录中的下列内容覆盖到 `gh-pages` 根目录；不要重新发布已经删除的 `voice-test/` 等历史测试页面：
    - `index.html`
    - `app.js`
-   - `measures.js`
+   - `measures.js`、各曲目的 `*-measures.js`
    - `voice-adapter.js`
    - `qwen-cloud.js`
-   - `backing-config.js`
+   - `backing-config.js`、各曲目的 `*-backing-config.js`
    - `assets/`
    - `video/`
    - `使用说明.txt`
@@ -148,6 +150,8 @@ assets/就让这大雨全都落下[rebalanced].mp3
 ```
 
 两份音频长度一致，第二份为突出鼓声版本。
+
+另有《陷阱》的 `assets/trap.mp3`、《鲜花》的 `assets/flower.mp3` 与《永远都会在》的 `assets/forever.mp3`。《鲜花》谱面共 136 小节、33 行，两个多小节休止区分别为 1–10 和 135–136；音频含节拍器。《永远都会在》共 55 小节、15 行。后三首曲目目前都没有教学视频。
 
 播放器标题“练习伴奏 ⌄”本身是曲目菜单入口：
 
@@ -270,6 +274,8 @@ https://drump-qrealtime-cxfvcbehsz.cn-beijing.fcapp.run
 | `drum-focus-backing-player-ui-v2` | 播放器折叠状态和位置 |
 | `drum-focus-backing-track-v1` | 当前伴奏版本 |
 | `drum-focus-video-score-scale-v1` | 视频页小节谱面缩放 |
+
+《陷阱》《鲜花》《永远都会在》在上述键名末尾分别追加 `-trap`、`-flower`、`-forever`，与默认曲目隔离。
 
 跨设备规则：
 
