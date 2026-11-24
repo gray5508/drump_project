@@ -2012,7 +2012,7 @@
   basicDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeBasicVideo(); });
   basicDialog.addEventListener("click", (event) => { if (event.target === basicDialog) closeBasicVideo(); });
   basicVideo.addEventListener("play", () => backingAudio.pause());
-  document.getElementById("openRhythm").addEventListener("click", openRhythm);
+  document.getElementById("openRhythm")?.addEventListener("click", openRhythm);
   document.getElementById("closeRhythm").addEventListener("click", closeRhythm);
   rhythmDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeRhythm(); });
   rhythmAudio.addEventListener("play", () => backingAudio.pause());
