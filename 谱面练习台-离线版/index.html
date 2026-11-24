@@ -146,15 +146,9 @@
     </section>
     <section class="view" id="view-basics" aria-label="基本功练习视频">
       <div class="basics-workspace">
-        <div class="basics-heading"><div><h2>基本功练习</h2><p>点击卡片进入练习界面，跟着视频或谱面练习。</p></div><span class="basics-count">7 项练习</span></div>
+        <div class="basics-heading"><div><h2>基本功练习</h2><p>点击卡片观看练习视频。</p></div><span class="basics-count">1 项练习</span></div>
         <div class="basics-grid">
-          <article class="basic-card"><button class="basic-card-open" type="button" data-basic="1" data-title="Italian Triplets" aria-label="放大播放 Italian Triplets"><span class="basic-thumb"><img src="video/basics/basic-1.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>Italian Triplets</strong><span>小军鼓练习 · 三连音</span></span><small>100 BPM · 1:23</small></span></button></article>
-          <article class="basic-card"><button class="basic-card-open" type="button" data-basic="2" data-title="Finale" aria-label="放大播放 Finale"><span class="basic-thumb"><img src="video/basics/basic-2.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>Finale</strong><span>节奏练习</span></span><small>108 BPM · 1:18</small></span></button></article>
-          <article class="basic-card"><button class="basic-card-open" type="button" data-basic="3" data-title="Crocodile’s Tears" aria-label="放大播放 Crocodile’s Tears"><span class="basic-thumb"><img src="video/basics/basic-3.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>Crocodile’s Tears</strong><span>节奏练习</span></span><small>100 BPM · 1:14</small></span></button></article>
-          <article class="basic-card"><button class="basic-card-open" type="button" data-basic="4" data-title="Tarantella für Tante Ella" aria-label="放大播放 Tarantella für Tante Ella"><span class="basic-thumb"><img src="video/basics/basic-4.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>Tarantella für Tante Ella</strong><span>三连音节奏练习</span></span><small>108 BPM · 0:56</small></span></button></article>
-          <article class="basic-card"><button class="basic-card-open" type="button" data-basic="5" data-title="A Jazzy Waltz" aria-label="放大播放 A Jazzy Waltz"><span class="basic-thumb"><img src="video/basics/basic-5.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>A Jazzy Waltz</strong><span>三拍子节奏练习</span></span><small>120 BPM · 1:20</small></span></button></article>
           <article class="basic-card"><button class="basic-card-open" type="button" data-basic="6" data-title="Rolling in the Deep" aria-label="放大播放 Rolling in the Deep"><span class="basic-thumb"><img src="video/basics/basic-6.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">▶</span></span><span class="basic-card-copy"><span><strong>Rolling in the Deep</strong><span>手法练习</span></span><small>105 BPM · 2:14</small></span></button></article>
-          <article class="basic-card"><button class="basic-card-open" id="openRhythm" type="button" aria-label="打开 Pop Rock 节奏型 1 至 8 谱面和伴奏"><span class="basic-thumb"><img src="assets/pop-rock-thumb.jpg" alt="" loading="lazy"><span class="basic-play" aria-hidden="true">♫</span></span><span class="basic-card-copy"><span><strong>Pop Rock · 节奏型 1–8</strong><span>完整谱面 + 循环伴奏</span></span><small>1:11</small></span></button></article>
         </div>
       </div>
     </section>
@@ -185,15 +179,15 @@
     <div class="video-shell">
       <div class="video-header"><div class="video-heading"><p>BASICS · LOOP</p><h3 id="basicVideoTitle">基本功练习</h3></div><button class="video-close" id="closeBasicVideo" type="button" aria-label="关闭基本功视频">×</button></div>
       <div class="video-stage"><video class="tutorial-video" id="basicVideo" controls loop playsinline preload="metadata"></video></div>
-      <div class="basic-video-footer"><div class="basic-video-nav"><button id="basicPrev" type="button">← 上一段</button><span class="basic-video-count" id="basicVideoCount">1 / 6</span><button id="basicNext" type="button">下一段 →</button></div><p class="video-loop-note">循环播放中 · 可用控制栏或语音暂停</p></div>
+      <div class="basic-video-footer"><div class="basic-video-nav" style="display:none"><button id="basicPrev" type="button">← 上一段</button><span class="basic-video-count" id="basicVideoCount">1 / 1</span><button id="basicNext" type="button">下一段 →</button></div><p class="video-loop-note">循环播放中 · 可用控制栏或语音暂停</p></div>
     </div>
   </dialog>
   <dialog class="rhythm-dialog" id="rhythmDialog" aria-labelledby="rhythmTitle">
     <div class="rhythm-shell">
       <div class="rhythm-head"><div><p>RHYTHM · PRACTICE</p><h3 id="rhythmTitle">Pop Rock · 节奏型 1–8</h3></div><button class="video-close" id="closeRhythm" type="button" aria-label="关闭节奏型练习">×</button></div>
-      <div class="rhythm-tools"><label class="rhythm-zoom">谱面大小 <input id="rhythmZoom" type="range" min="1" max="2" step="0.1" value="1" aria-label="放大谱面"><output id="rhythmZoomValue">100%</output></label><a class="rhythm-pdf-link" href="assets/pop-rock-score.pdf" target="_blank" rel="noopener">查看原 PDF ↗</a></div>
-      <div class="rhythm-score-scroll" id="rhythmScoreScroll"><img class="rhythm-score-image" id="rhythmScore" src="assets/pop-rock-score.png" alt="Pop Rock 节奏型 1 至 8 完整鼓谱"></div>
-      <div class="rhythm-player"><audio id="rhythmAudio" src="assets/pop-rock.mp3" controls loop preload="metadata" aria-label="Pop Rock 节奏型练习伴奏"></audio><label class="rhythm-rate">播放速度 <select id="rhythmRate" aria-label="节奏型伴奏播放速度"><option value="0.75">0.75×</option><option value="1" selected>1.00×</option><option value="1.25">1.25×</option></select></label></div>
+      <div class="rhythm-tools"><label class="rhythm-zoom">谱面大小 <input id="rhythmZoom" type="range" min="1" max="2" step="0.1" value="1" aria-label="放大谱面"><output id="rhythmZoomValue">100%</output></label></div>
+      <div class="rhythm-score-scroll" id="rhythmScoreScroll"><img class="rhythm-score-image" id="rhythmScore" alt="Pop Rock 节奏型 1 至 8 完整鼓谱"></div>
+      <div class="rhythm-player"><audio id="rhythmAudio" controls loop preload="metadata" aria-label="Pop Rock 节奏型练习伴奏"></audio><label class="rhythm-rate">播放速度 <select id="rhythmRate" aria-label="节奏型伴奏播放速度"><option value="0.75">0.75×</option><option value="1" selected>1.00×</option><option value="1.25">1.25×</option></select></label></div>
     </div>
   </dialog>
   <div class="video-toast" id="videoToast" role="status" aria-live="polite"></div>
@@ -206,7 +200,7 @@
   <script src="trap-backing-config.js"></script>
   <script src="flower-backing-config.js"></script>
   <script src="forever-backing-config.js"></script>
-  <script src="app.js?v=20261124-flower-86"></script>
+  <script src="app.js?v=20261124-basics-rolling"></script>
   <script src="voice-adapter.js?v=20261110-basics"></script>
   <script src="qwen-cloud.js?v=20260720-shared-hotwords"></script>
 </body>

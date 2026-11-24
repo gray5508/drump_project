@@ -45,3 +45,7 @@ __pycache__/
 .playwright-cli/
 /谱面练习台-离线版/video/measure-*.mp4
 /谱面练习台-离线版/video/posters/measure-*.jpg
+/谱面练习台-离线版/video/basics/basic-[1-5].mp4
+/谱面练习台-离线版/video/basics/basic-[1-5].jpg
+/谱面练习台-离线版/assets/pop-rock-*
+/谱面练习台-离线版/assets/pop-rock.mp3
