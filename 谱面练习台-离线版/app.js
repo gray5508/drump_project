@@ -14,9 +14,9 @@
     flower: { title: "鲜花", artist: "回春丹乐队", score: window.FLOWER_SCORE_DATA, image: "assets/flower-score.png", audio: "assets/flower.mp3", config: window.FLOWER_BACKING_CONFIG, configName: "FLOWER_BACKING_CONFIG", configFile: "flower-backing-config.js" },
     forever: { title: "永远都会在", artist: "旅行团乐队", score: window.FOREVER_SCORE_DATA, image: "assets/forever-score.png", audio: "assets/forever.mp3", config: window.FOREVER_BACKING_CONFIG, configName: "FOREVER_BACKING_CONFIG", configFile: "forever-backing-config.js" }
   };
-  const songId = Object.hasOwn(songs, requestedSong) ? requestedSong : "rain";
+  const songId = Object.hasOwn(songs, requestedSong) ? requestedSong : "flower";
   const song = songs[songId];
-  const noTutorialVideo = songId !== "rain";
+  const noTutorialVideo = songId !== "flower" && (songId !== "rain" || location.hostname === "gray5508.github.io");
   const SCORE_DATA = song.score;
   const scoreImagePath = song.image;
   const storageKey = (key) => songId === "rain" ? key : `${key}-${songId}`;
@@ -35,7 +35,9 @@
   const VIDEO_SCORE_SCALE_KEY = "drum-focus-video-score-scale-v1";
   const INITIAL_TEMPLATE_WIDTH = 240;
   const INITIAL_TEMPLATE_HEIGHT = 120;
-  const VIDEO_LIBRARY = noTutorialVideo ? {} : {
+  const VIDEO_LIBRARY = songId === "flower" ? {
+    86: [{ label: "教学演示", src: "video/flower-measure-86.mp4", poster: "video/posters/flower-measure-86.jpg" }]
+  } : noTutorialVideo ? {} : {
     40: [
       { label: "片段 1", src: "video/measure-40-1.mp4", poster: "video/posters/measure-40-1.jpg" },
       { label: "片段 2", src: "video/measure-40-2.mp4", poster: "video/posters/measure-40-2.jpg" }
@@ -56,6 +58,7 @@
   let zoom = 100;
   let lineIndex = 0;
   let currentMode = "full";
+  let activeBasicIndex = -1;
   const songBackingConfig = song.config;
   const repositoryBackingConfig = songBackingConfig && typeof songBackingConfig === "object"
     ? songBackingConfig
@@ -98,6 +101,19 @@
   const templateSizeValue = document.getElementById("templateSizeValue");
   const videoDialog = document.getElementById("videoDialog");
   const tutorialVideo = document.getElementById("tutorialVideo");
+  const basicCards = [...document.querySelectorAll(".basic-card-open[data-basic]")];
+  const basicDialog = document.getElementById("basicVideoDialog");
+  const basicVideo = document.getElementById("basicVideo");
+  const basicVideoTitle = document.getElementById("basicVideoTitle");
+  const basicVideoCount = document.getElementById("basicVideoCount");
+  const basicPrev = document.getElementById("basicPrev");
+  const basicNext = document.getElementById("basicNext");
+  const rhythmDialog = document.getElementById("rhythmDialog");
+  const rhythmAudio = document.getElementById("rhythmAudio");
+  const rhythmScore = document.getElementById("rhythmScore");
+  const rhythmZoom = document.getElementById("rhythmZoom");
+  const rhythmZoomValue = document.getElementById("rhythmZoomValue");
+  const rhythmRate = document.getElementById("rhythmRate");
   const videoTitle = document.getElementById("videoTitle");
   const videoClips = document.getElementById("videoClips");
   const videoToast = document.getElementById("videoToast");
@@ -113,16 +129,18 @@
   songSelect.value = songId;
   songSelect.addEventListener("change", () => {
     const nextUrl = new URL(location.href);
-    if (songSelect.value !== "rain") nextUrl.searchParams.set("song", songSelect.value);
+    if (songSelect.value !== "flower") nextUrl.searchParams.set("song", songSelect.value);
     else nextUrl.searchParams.delete("song");
     location.href = nextUrl.href;
   });
-  if (noTutorialVideo) {
+  if (songId !== "rain") {
     document.querySelector(".song strong").textContent = song.title;
     document.querySelector(".song div > span").textContent = `${song.artist} · 架子鼓谱`;
     document.querySelector(".recognition strong").textContent = `${SCORE_DATA.measureCount} 小节`;
     document.querySelector("#view-full .status div:first-child span:last-child").textContent = `离线模式 · 已识别 ${SCORE_DATA.systems} 行谱表、${SCORE_DATA.regions} 个可选区域`;
-    document.querySelector("#view-full .hint span").textContent = "单击标记颜色，双击设置伴奏时间，长按试听已设置伴奏";
+    document.querySelector("#view-full .hint span").textContent = noTutorialVideo
+      ? "单击标记颜色，双击设置伴奏时间，长按试听已设置伴奏"
+      : "单击标记颜色，双击设置伴奏时间，长按打开教学视频或试听伴奏";
     scoreSourceImage.src = scoreImagePath;
     scoreSourceImage.alt = `《${song.title}》架子鼓谱`;
     backingAudio.src = song.audio;
@@ -130,7 +148,7 @@
     trackOptions[0].dataset.src = song.audio;
     trackOptions[0].textContent = "原版音频";
     trackOptions[1].remove();
-    document.querySelector("#segmentHoldAction option[value=video]").remove();
+    if (noTutorialVideo) document.querySelector("#segmentHoldAction option[value=video]").remove();
     document.querySelector(".config-sync-card p").textContent = `本机保存后导出配置文件，替换仓库中的 ${songId}-backing-config.js，平板即可读取同一套参数。`;
   }
   const backingTrackOptions = [...document.querySelectorAll("#backingTrackOptions [data-track]")];
@@ -514,6 +532,12 @@
   }
 
   function playBacking() {
+    if (rhythmDialog.open) {
+      const request = rhythmAudio.play();
+      if (request) request.catch(() => { /* Native controls remain available. */ });
+      return { ok: true, message: "正在播放 Pop Rock 节奏型伴奏" };
+    }
+    if (currentMode === "basics") return { ok: false, message: "请先切回曲目练习页再播放伴奏" };
     if (activeBackingSegmentId && Number.isFinite(activeBackingSegmentStart) && Number.isFinite(activeBackingSegmentEnd)) {
       if (backingAudio.currentTime < activeBackingSegmentStart || backingAudio.currentTime >= activeBackingSegmentEnd - 0.035) {
         backingAudio.currentTime = activeBackingSegmentStart;
@@ -530,6 +554,10 @@
   }
 
   function pauseBacking() {
+    if (rhythmDialog.open) {
+      rhythmAudio.pause();
+      return { ok: true, message: "已暂停 Pop Rock 节奏型伴奏" };
+    }
     if (backingAudio.paused) return { ok: false, message: "伴奏当前没有播放" };
     backingAudio.pause();
     return activeBackingSegmentId
@@ -764,7 +792,11 @@
     setSegmentEnd(end);
     segmentRate.value = String(rate);
     segmentRateValue.textContent = `${rate.toFixed(2)}×`;
-    segmentHoldAction.value = segment?.holdAction || (noTutorialVideo ? "backing" : "video");
+    const flowerWithoutVideo = songId === "flower" && !tutorialClipsFor(id).length;
+    const forceBacking = noTutorialVideo || flowerWithoutVideo;
+    const videoOption = segmentHoldAction.querySelector('option[value="video"]');
+    if (videoOption) videoOption.disabled = forceBacking;
+    segmentHoldAction.value = forceBacking ? "backing" : segment?.holdAction || "video";
     segmentToEnd.checked = !segment || segment.end === null;
     syncSegmentEndControls();
     document.getElementById("deleteMeasureSegment").hidden = !segment;
@@ -824,7 +856,7 @@
     const measure = measureMap.get(id);
     if (!measure) return { ok: false, message: "没有找到对应的小节" };
     const segment = backingSegmentFor(id);
-    if (noTutorialVideo || segment?.holdAction === "backing") return playBackingSegmentById(id);
+    if (noTutorialVideo || (songId === "flower" && !tutorialClipsFor(id).length) || segment?.holdAction === "backing") return playBackingSegmentById(id);
     const clips = tutorialClipsFor(id);
     if (!clips.length) return { ok: false, message: `第 ${measure.label} 小节还没有教学视频` };
     openTutorial(id);
@@ -1717,6 +1749,7 @@
   }
 
   function voiceGoToMeasure(number) {
+    if (currentMode === "basics") return { ok: false, message: "基本功练习页没有曲目小节" };
     const measure = SCORE_DATA.measures.find((item) => number >= item.measureStart && number <= item.measureEnd);
     if (!measure) return { ok: false, message: `没有找到第 ${number} 小节` };
     if (currentMode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
@@ -1763,6 +1796,7 @@
   }
 
   function voiceMoveMeasure(direction) {
+    if (currentMode === "basics") return { ok: false, message: "基本功练习页没有曲目小节" };
     if (currentMode === "arrange") return { ok: false, message: "小节编排界面暂不执行语音指令" };
     const selected = singleVoiceSelection();
     if (!selected.ok) return selected;
@@ -1774,7 +1808,53 @@
     return voiceGoToMeasure(SCORE_DATA.measures[nextIndex].measureStart);
   }
 
+  function openRhythm() {
+    backingAudio.pause();
+    rhythmDialog.showModal();
+  }
+
+  function closeRhythm() {
+    rhythmAudio.pause();
+    if (rhythmDialog.open) rhythmDialog.close();
+  }
+
+  function openBasicVideo(index) {
+    const card = basicCards[index];
+    if (!card) return;
+    activeBasicIndex = index;
+    basicVideo.pause();
+    basicVideo.src = `video/basics/basic-${card.dataset.basic}.mp4`;
+    basicVideo.poster = `video/basics/basic-${card.dataset.basic}.jpg`;
+    basicVideo.setAttribute("aria-label", `${card.dataset.title} 基本功练习视频`);
+    basicVideoTitle.textContent = card.dataset.title;
+    basicVideoCount.textContent = `${index + 1} / ${basicCards.length}`;
+    basicPrev.disabled = index === 0;
+    basicNext.disabled = index === basicCards.length - 1;
+    basicVideo.load();
+    if (!basicDialog.open) basicDialog.showModal();
+    const playRequest = basicVideo.play();
+    if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
+  }
+
+  function closeBasicVideo() {
+    basicVideo.pause();
+    basicVideo.removeAttribute("src");
+    basicVideo.removeAttribute("poster");
+    basicVideo.load();
+    if (basicDialog.open) basicDialog.close();
+    activeBasicIndex = -1;
+  }
+
   function voicePlayTutorial() {
+    if (rhythmDialog.open) return playBacking();
+    if (currentMode === "basics") {
+      if (!basicDialog.open) openBasicVideo(0);
+      else {
+        const playRequest = basicVideo.play();
+        if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
+      }
+      return { ok: true, message: "基本功视频继续播放" };
+    }
     if (videoDialog.open && tutorialVideo.currentSrc) {
       const playRequest = tutorialVideo.play();
       if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
@@ -1789,6 +1869,12 @@
   }
 
   function voicePauseTutorial() {
+    if (rhythmDialog.open) return pauseBacking();
+    if (currentMode === "basics") {
+      if (!basicDialog.open) return { ok: false, message: "当前没有打开基本功视频" };
+      basicVideo.pause();
+      return { ok: true, message: "基本功视频已暂停" };
+    }
     if (!videoDialog.open) return { ok: false, message: "当前没有打开的教学视频" };
     if (tutorialVideo.paused) return { ok: true, message: "教学视频已经暂停" };
     tutorialVideo.pause();
@@ -1796,6 +1882,19 @@
   }
 
   function voiceRestartTutorial() {
+    if (rhythmDialog.open) {
+      rhythmAudio.currentTime = 0;
+      return playBacking();
+    }
+    if (currentMode === "basics") {
+      if (!basicDialog.open) openBasicVideo(0);
+      else {
+        basicVideo.currentTime = 0;
+        const playRequest = basicVideo.play();
+        if (playRequest) playRequest.catch(() => { /* Native controls remain available. */ });
+      }
+      return { ok: true, message: "基本功视频已从头播放" };
+    }
     if (!videoDialog.open || !tutorialVideo.currentSrc) {
       return { ok: false, message: "当前没有打开的教学视频" };
     }
@@ -1806,6 +1905,13 @@
   }
 
   function voiceMoveTutorial(direction) {
+    if (rhythmDialog.open) return { ok: false, message: "当前谱面伴奏没有其他视频片段" };
+    if (currentMode === "basics") {
+      const nextIndex = activeBasicIndex + direction;
+      if (nextIndex < 0 || nextIndex >= basicCards.length) return { ok: false, message: direction > 0 ? "已经是最后一个基本功视频" : "已经是第一个基本功视频" };
+      openBasicVideo(nextIndex);
+      return { ok: true, message: `正在播放${basicCards[nextIndex].dataset.title}` };
+    }
     if (!videoDialog.open || !activeTutorialId) return { ok: false, message: "当前没有打开的教学视频" };
     const playlist = tutorialPlaylist();
     const currentIndex = playlist.findIndex((item) => item.id === activeTutorialId && item.clipIndex === activeTutorialClipIndex);
@@ -1819,13 +1925,27 @@
   }
 
   function voiceCloseTutorial() {
+    if (rhythmDialog.open) {
+      closeRhythm();
+      return { ok: true, message: "已关闭 Pop Rock 节奏型练习" };
+    }
+    if (currentMode === "basics" && basicDialog.open) {
+      closeBasicVideo();
+      return { ok: true, message: "已关闭基本功视频" };
+    }
     if (!videoDialog.open) return { ok: false, message: "当前没有打开的教学视频" };
     closeTutorial();
     return { ok: true, message: "已关闭教学视频" };
   }
 
   function setMode(mode) {
+    if (currentMode === "basics" && mode !== "basics") {
+      closeBasicVideo();
+      closeRhythm();
+    }
+    if (mode === "basics") backingAudio.pause();
     currentMode = mode;
+    document.body.classList.toggle("basics-active", mode === "basics");
     document.querySelectorAll(".mode-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.mode === mode));
     document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${mode}`));
     if (mode === "line") renderLine();
@@ -1834,7 +1954,7 @@
   }
 
   function voiceSwitchMode(mode) {
-    const names = { full: "完整谱面", line: "按行练习", arrange: "小节编排" };
+    const names = { full: "完整谱面", line: "按行练习", arrange: "小节编排", basics: "基本功练习" };
     if (!names[mode]) return { ok: false, message: "没有找到对应的练习界面" };
     if (videoDialog.open) closeTutorial();
     if (currentMode === mode) return { ok: true, message: `当前已经是${names[mode]}界面` };
@@ -1854,7 +1974,7 @@
     pauseVideo: voicePauseTutorial,
     restartVideo: voiceRestartTutorial,
     closeVideo: voiceCloseTutorial,
-    isVideoOpen: () => videoDialog.open,
+    isVideoOpen: () => videoDialog.open || basicDialog.open || rhythmDialog.open,
     nextVideo: () => voiceMoveTutorial(1),
     prevVideo: () => voiceMoveTutorial(-1),
     playBacking,
@@ -1885,6 +2005,23 @@
   }
 
   document.querySelectorAll(".mode-tab").forEach((tab) => tab.addEventListener("click", () => setMode(tab.dataset.mode)));
+  basicCards.forEach((card, index) => card.addEventListener("click", () => openBasicVideo(index)));
+  document.getElementById("closeBasicVideo").addEventListener("click", closeBasicVideo);
+  basicPrev.addEventListener("click", () => openBasicVideo(activeBasicIndex - 1));
+  basicNext.addEventListener("click", () => openBasicVideo(activeBasicIndex + 1));
+  basicDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeBasicVideo(); });
+  basicDialog.addEventListener("click", (event) => { if (event.target === basicDialog) closeBasicVideo(); });
+  basicVideo.addEventListener("play", () => backingAudio.pause());
+  document.getElementById("openRhythm").addEventListener("click", openRhythm);
+  document.getElementById("closeRhythm").addEventListener("click", closeRhythm);
+  rhythmDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeRhythm(); });
+  rhythmAudio.addEventListener("play", () => backingAudio.pause());
+  rhythmZoom.addEventListener("input", () => {
+    const percent = Math.round(Number(rhythmZoom.value) * 100);
+    rhythmScore.style.width = `${percent}%`;
+    rhythmZoomValue.textContent = `${percent}%`;
+  });
+  rhythmRate.addEventListener("change", () => { rhythmAudio.playbackRate = Number(rhythmRate.value); });
   document.getElementById("minus").addEventListener("click", () => {
     zoom = Math.max(70, zoom - 10); updatePageScale();
   });

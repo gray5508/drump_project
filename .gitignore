@@ -41,3 +41,7 @@ next-env.d.ts
 /outputs/
 /work/
 /tmp/
+__pycache__/
+.playwright-cli/
+/谱面练习台-离线版/video/measure-*.mp4
+/谱面练习台-离线版/video/posters/measure-*.jpg
